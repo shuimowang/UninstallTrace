@@ -1,7 +1,7 @@
 #Requires -Version 7.2
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory)][ValidateSet('SumatraPDF', 'WinMerge')][string] $Product,
+    [Parameter(Mandatory)][ValidateSet('SumatraPDF', 'WinMerge', 'GhostDownloader')][string] $Product,
     [Parameter(Mandatory)][string] $VerificationDll,
     [Parameter(Mandatory)][string] $ReferenceDll,
     [Parameter(Mandatory)][string] $ReportDirectory
@@ -41,6 +41,7 @@ function Get-ProductRegistrations([string] $NamePattern) {
                             [pscustomobject]@{
                                 Name = $name.Trim()
                                 Version = [string]$item.GetValue('DisplayVersion', '')
+                                Publisher = [string]$item.GetValue('Publisher', '')
                                 Location = [string]$item.GetValue('InstallLocation', '')
                                 Uninstall = [string]$item.GetValue('UninstallString', '')
                             }
@@ -104,6 +105,10 @@ $installParent = Join-Path $localData 'Programs'
 $installPath = Join-Path $installParent $Product
 $observedFiles = @()
 $observedRegistryKeys = @()
+$seededRegistryValues = @()
+$protectedRegistryValues = @()
+$referenceVersion = 'v0.1.3'
+$requiredDisplayName = $null
 
 if ($Product -eq 'SumatraPDF') {
     # https://github.com/microsoft/winget-pkgs/blob/master/manifests/s/SumatraPDF/SumatraPDF/3.5.2/SumatraPDF.SumatraPDF.installer.yaml
@@ -122,7 +127,7 @@ if ($Product -eq 'SumatraPDF') {
     if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw 'The pinned SumatraPDF uninstaller relaunches elevated. The runner must already be elevated.'
     }
-} else {
+} elseif ($Product -eq 'WinMerge') {
     # https://github.com/microsoft/winget-pkgs/blob/master/manifests/w/WinMerge/WinMerge/2.16.60/WinMerge.WinMerge.installer.yaml
     # https://manual.winmerge.org/en/Command_line.html
     # https://jrsoftware.org/inno-setup/documentation/topic_uninstcmdline.htm
@@ -139,6 +144,38 @@ if ($Product -eq 'SumatraPDF') {
     $installArguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NORESTARTAPPLICATIONS', '/NOICONS', "/DIR=$installPath")
     $uninstallArguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     if (Test-Path -LiteralPath $settingsRegistryPath) { throw 'WinMerge settings existed before verification.' }
+} else {
+    # https://api.github.com/repos/XiaoYouChR/Ghost-Downloader-3/releases/tags/v4.5.11
+    # https://github.com/XiaoYouChR/Ghost-Downloader-3/blob/v4.5.11/scripts/Ghost-Downloader-3.iss
+    $source = 'https://github.com/XiaoYouChR/Ghost-Downloader-3/releases/download/v4.5.11/Ghost-Downloader-v4.5.11-Windows-x86_64-Setup.exe'
+    $sha256 = '0563d0e814fc9fed64ce700561be75d0d6769c4d2ade3f19e393aa779971fdfb'
+    $version = '4.5.11'
+    $requiredDisplayName = 'Ghost Downloader 版本 4.5.11'
+    $referenceVersion = 'v0.1.5'
+    $namePattern = '^Ghost Downloader(?:\s|$)'
+    $processNames = @('Ghost-Downloader-3')
+    $installParent = Join-Path ([IO.Path]::GetPathRoot($env:RUNNER_TEMP)) 'UninstallTraceValidation'
+    $installPath = Join-Path $installParent 'Ghost Downloader'
+    $binary = Join-Path $installPath 'Ghost-Downloader-3.exe'
+    $settingsDirectory = Join-Path $localData 'GhostDownloader'
+    $settingsFile = Join-Path $settingsDirectory 'GhostDownloader.log'
+    $installArguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NORESTARTAPPLICATIONS', '/LANG=chinesesimplified', "/DIR=$installPath")
+    $uninstallArguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
+    $startupPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
+    $startupName = 'GhostDownloader'
+    $otherStartupName = 'UninstallTraceValidationOtherApp'
+    $startupCommand = '"{0}" --silence' -f $binary
+    $otherStartupCommand = '"{0}"' -f (Join-Path ([Environment]::SystemDirectory) 'notepad.exe')
+    $run = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupPath)
+    if ($null -ne $run) {
+        try {
+            if ($run.GetValueNames() -contains $startupName -or $run.GetValueNames() -contains $otherStartupName) {
+                throw 'Ghost Downloader startup fixture value already exists.'
+            }
+        } finally { $run.Dispose() }
+    }
+    $seededRegistryValues = @(@{ path = $startupPath; name = $startupName })
+    $protectedRegistryValues = @(@{ path = $startupPath; name = $otherStartupName })
 }
 
 if (@(Get-ProductRegistrations $namePattern).Count -gt 0 -or
@@ -166,21 +203,29 @@ if ($registrations.Count -ne 1 -or $registrations[0].Version -notmatch "^$([rege
     throw "$Product did not register exactly one expected program and install location."
 }
 $registration = $registrations[0]
+if ($null -ne $requiredDisplayName -and ($registration.Name -cne $requiredDisplayName -or $registration.Publisher -cne 'XiaoYouChR')) {
+    throw "Expected the localized Ghost Downloader registration '$requiredDisplayName' from XiaoYouChR; got '$($registration.Name)' from '$($registration.Publisher)'."
+}
 $snapshot = Join-Path $reports 'installed-app.json'
 Invoke-Verification $VerificationDll @('--real-snapshot', $registration.Name, $snapshot)
 
-if ($Product -eq 'SumatraPDF') {
-    # 3.5.2 needs the appdata directory to exist when explicitly selecting it.
-    [void][IO.Directory]::CreateDirectory($settingsDirectory)
-    $process = Start-FixtureProcess $binary @('-appdata', $settingsDirectory)
+if ($Product -in @('SumatraPDF', 'GhostDownloader')) {
+    $appArguments = if ($Product -eq 'GhostDownloader') { @('--silence') } else {
+        # SumatraPDF 3.5.2 requires the explicitly selected directory to exist.
+        [void][IO.Directory]::CreateDirectory($settingsDirectory)
+        @('-appdata', $settingsDirectory)
+    }
+    $process = Start-FixtureProcess $binary $appArguments
     try {
         Wait-FixtureCondition 30 {
             $process.Refresh()
-            if ($process.HasExited) { throw "SumatraPDF exited before writing its initial settings ($($process.ExitCode))." }
-            [IO.File]::Exists($settingsFile) -and (Get-Item -LiteralPath $settingsFile).Length -gt 0
-        } 'SumatraPDF did not write its initial settings.'
+            if ($process.HasExited) { throw "$Product exited before writing its launch artifact ($($process.ExitCode))." }
+            if (![IO.File]::Exists($settingsFile) -or (Get-Item -LiteralPath $settingsFile).Length -eq 0) { return $false }
+            if ($Product -ne 'GhostDownloader') { return $true }
+            Select-String -LiteralPath $settingsFile -SimpleMatch "Ghost Downloader v$version launched" -Quiet -ErrorAction SilentlyContinue
+        } "$Product did not write its launch artifact."
         if ($process.MainWindowHandle -ne [IntPtr]::Zero -and $process.CloseMainWindow() -and $process.WaitForExit(15000)) {
-            if ($process.ExitCode -ne 0) { throw "SumatraPDF exited with code $($process.ExitCode)." }
+            if ($process.ExitCode -ne 0) { throw "$Product exited with code $($process.ExitCode)." }
         }
     } finally {
         if (!$process.HasExited) {
@@ -205,6 +250,18 @@ if ([IO.File]::Exists($settingsFile) -and (Get-Item -LiteralPath $settingsFile).
 if ($observedFiles.Count + $observedRegistryKeys.Count -lt 1) { throw "$Product did not generate a settings artifact." }
 if (@(Get-Process -Name $processNames -ErrorAction SilentlyContinue).Count -gt 0) { throw "$Product still has a running application process." }
 
+if ($Product -eq 'GhostDownloader') {
+    $run = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($startupPath)
+    try {
+        $current = $run.GetValue($startupName, $null)
+        if (($null -ne $current -and $current -cne $startupCommand) -or ($run.GetValueNames() -contains $otherStartupName)) {
+            throw 'Unexpected startup fixture values before uninstall.'
+        }
+        $run.SetValue($startupName, $startupCommand, [Microsoft.Win32.RegistryValueKind]::String)
+        $run.SetValue($otherStartupName, $otherStartupCommand, [Microsoft.Win32.RegistryValueKind]::String)
+    } finally { $run.Dispose() }
+}
+
 # Use only the native uninstaller registered by this fixture and the product's fixed unattended switches.
 if ($registration.Uninstall -notmatch '^\s*"?(?<path>[a-z]:\\.+?\.exe)"?(?:\s|$)') {
     throw "$Product registered an unsupported uninstall command."
@@ -212,7 +269,7 @@ if ($registration.Uninstall -notmatch '^\s*"?(?<path>[a-z]:\\.+?\.exe)"?(?:\s|$)
 $uninstaller = [IO.Path]::GetFullPath($Matches.path)
 if ([IO.Path]::GetDirectoryName($uninstaller) -ne $installPath -or ![IO.File]::Exists($uninstaller) -or
     ($Product -eq 'SumatraPDF' -and ($uninstaller -ne $binary -or $registration.Uninstall -notmatch '(?:^|\s)-uninstall(?:\s|$)')) -or
-    ($Product -eq 'WinMerge' -and [IO.Path]::GetFileName($uninstaller) -notmatch '^unins\d{3}\.exe$')) {
+    ($Product -ne 'SumatraPDF' -and [IO.Path]::GetFileName($uninstaller) -notmatch '^unins\d{3}\.exe$')) {
     throw "$Product registered an unexpected native uninstaller."
 }
 Invoke-FixtureProcess $uninstaller $uninstallArguments
@@ -224,20 +281,47 @@ Write-Host 'Confirmed native uninstall completed.'
 
 # Keep the positive seed independent of settings written by the real program.
 $seeded = Join-Path $installPath 'UninstallTrace-seeded-obsolete.txt'
-$similarSibling = Join-Path (Join-Path $installParent "$Product-Shared-Fixture") 'unrelated.txt'
+$similarSibling = Join-Path (Join-Path $installParent "$([IO.Path]::GetFileName($installPath))-Shared-Fixture") 'unrelated.txt'
 $sharedParent = Join-Path $localData 'UninstallTraceVerificationShared'
 $shared = Join-Path $sharedParent 'shared.txt'
 New-ControlFile $seeded 'Bounded cleanup confirmation seed'
 New-ControlFile $similarSibling 'Similar name, unrelated fixture'
 New-ControlFile $shared 'Unrelated shared fixture'
+$seededFiles = @($seeded)
+
+if ($Product -eq 'GhostDownloader') {
+    # The genuine startup log was observed before uninstall. This distinct file deterministically exercises a leftover.
+    $dataSeed = Join-Path $settingsDirectory 'UninstallTrace-seeded-configuration.txt'
+    New-ControlFile $dataSeed 'Product data directory cleanup confirmation seed'
+    $seededFiles += $dataSeed
+
+    $run = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($startupPath, $true)
+    try {
+        if ($null -eq $run -or $run.GetValue($otherStartupName, $null) -cne $otherStartupCommand) {
+            throw 'Vendor uninstall changed the unrelated startup value.'
+        }
+        $current = $run.GetValue($startupName, $null)
+        if ($null -eq $current) {
+            $run.SetValue($startupName, $startupCommand, [Microsoft.Win32.RegistryValueKind]::String)
+            Write-Host 'The vendor removed the startup value. Recreated it for the seeded leftover check.'
+        } elseif ($current -cne $startupCommand) {
+            throw 'Vendor uninstall changed the startup seed unexpectedly.'
+        }
+    } finally {
+        if ($null -ne $run) { $run.Dispose() }
+    }
+}
 
 $expectations = Join-Path $reports 'expectations.json'
 [ordered]@{
+    referenceVersion = $referenceVersion
     observedFiles = @($observedFiles)
     observedRegistryKeys = @($observedRegistryKeys)
-    seededFiles = @($seeded)
+    seededFiles = @($seededFiles)
+    seededRegistryValues = @($seededRegistryValues)
     protectedFiles = @($similarSibling, $shared)
     protectedRegistryKeys = @()
+    protectedRegistryValues = @($protectedRegistryValues)
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $expectations -Encoding utf8NoBOM
 
 Invoke-Verification $ReferenceDll @('--real-report', $snapshot, $expectations, (Join-Path $reports 'baseline-report.json'))

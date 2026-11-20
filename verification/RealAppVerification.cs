@@ -34,8 +34,10 @@ internal static class RealAppVerification
         var tracked = expectations.ObservedFiles.Select(p => new Probe(p, false, "observed"))
             .Concat(expectations.ObservedRegistryKeys.Select(p => new Probe(p, true, "observed")))
             .Concat(expectations.SeededFiles.Select(p => new Probe(p, false, "seeded")))
+            .Concat(expectations.SeededRegistryValues.Select(v => new Probe(v.Path, true, "seeded", v.Name)))
             .Concat(expectations.ProtectedFiles.Select(p => new Probe(p, false, "control")))
-            .Concat(expectations.ProtectedRegistryKeys.Select(p => new Probe(p, true, "control"))).ToArray();
+            .Concat(expectations.ProtectedRegistryKeys.Select(p => new Probe(p, true, "control")))
+            .Concat(expectations.ProtectedRegistryValues.Select(v => new Probe(v.Path, true, "control", v.Name))).ToArray();
         if (!tracked.Any(p => p.Group == "observed") || !tracked.Any(p => p.Group == "control"))
             throw new InvalidDataException("Each case needs vendor-created observations and independent controls.");
 
@@ -44,7 +46,7 @@ internal static class RealAppVerification
         var before = tracked.ToDictionary(p => p, p => p.Fingerprint());
         var observations = tracked.Select(p => new
         {
-            p.Group, p.Path, p.IsKey,
+            p.Group, p.Path, p.IsKey, p.ValueName,
             PresentAfterVendor = before[p] is not null,
             Candidate = scan.Items.FirstOrDefault(p.CoveredBy)?.Target
         }).ToArray();
@@ -52,8 +54,9 @@ internal static class RealAppVerification
         var remaining = observed.Count(o => o.PresentAfterVendor);
         var detected = observed.Count(o => o.PresentAfterVendor && o.Candidate is not null);
         var controlHits = observations.Count(o => o.Group == "control" && o.Candidate is not null);
-        var engine = args[0] == "--real-report" ? "v0.1.3" : "candidate";
-        var seed = expectations.SeededFiles.Single();
+        var engine = args[0] == "--real-report" ? expectations.ReferenceVersion : "candidate";
+        var seed = expectations.SeededFiles.Single(path =>
+            Paths.Equals(Path.GetDirectoryName(path), Path.TrimEndingDirectorySeparator(snapshot.InstallLocation)));
         var peerExe = Path.Combine(Path.GetDirectoryName(seed)!, "UninstallTrace-neighbor-fixture.exe");
         var peer = new InstalledApp
         {
@@ -66,7 +69,7 @@ internal static class RealAppVerification
         var sharedFolderOffered = LeftoverScanner.Scan(snapshot, [.. inventory, peer]).Items.Any(sharedProbe.CoveredBy);
         var countLine = $"{snapshot.Name} {snapshot.Version} ({engine}): vendor removed {observed.Length - remaining}/{observed.Length} watched artifacts; " +
             $"scanner found {detected}/{remaining} observed leftovers; seeded hits {observations.Count(o => o.Group == "seeded" && o.Candidate != null)}/" +
-            $"{expectations.SeededFiles.Length}; hits on protected controls {controlHits}/{tracked.Count(p => p.Group == "control")}; " +
+            $"{tracked.Count(p => p.Group == "seeded")}; hits on protected controls {controlHits}/{tracked.Count(p => p.Group == "control")}; " +
             $"shared uninstall-folder offered with a registered peer: {sharedFolderOffered}.";
         Console.WriteLine(countLine);
         if (Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY") is { } summary)
@@ -79,7 +82,7 @@ internal static class RealAppVerification
         if (controlHits != 0 || sharedFolderOffered || tracked.Any(p => p.Group == "control" && before[p] is null))
             throw new InvalidOperationException("A protected control was missing or was suggested for cleanup.");
         var targets = tracked.Where(p => p.Group != "control" && before[p] is not null).ToArray();
-        if (targets.Length == 0 || expectations.SeededFiles.Any(path => !File.Exists(path)))
+        if (targets.Length == 0 || tracked.Any(p => p.Group == "seeded" && before[p] is null))
             throw new InvalidOperationException("Expected the seeded or natural post-uninstall targets to exist.");
         var selected = scan.Items.Where(item => targets.Any(p => p.CoveredBy(item) && p.AllowsQuarantine(item, snapshot))).ToArray();
         if (targets.Any(p => !selected.Any(p.CoveredBy)))
@@ -136,25 +139,33 @@ internal static class RealAppVerification
 
     private sealed class Expectations
     {
+        public string ReferenceVersion { get; set; } = "v0.1.3";
         public string[] ObservedFiles { get; set; } = [];
         public string[] ObservedRegistryKeys { get; set; } = [];
         public string[] SeededFiles { get; set; } = [];
         public string[] ProtectedFiles { get; set; } = [];
         public string[] ProtectedRegistryKeys { get; set; } = [];
+        public ValueTarget[] SeededRegistryValues { get; set; } = [];
+        public ValueTarget[] ProtectedRegistryValues { get; set; } = [];
     }
 
-    private sealed record Probe(string Path, bool IsKey, string Group)
+    private sealed record ValueTarget(string Path, string Name);
+    private sealed record Probe(string Path, bool IsKey, string Group, string? ValueName = null)
     {
         public bool CoveredBy(LeftoverItem item)
         {
             if (IsKey)
-                return item.Kind == LeftoverKind.RegistryKey && item.Hive == RegistryHive.CurrentUser && AtOrBelow(Path, item.Target);
+                return item.Hive == RegistryHive.CurrentUser &&
+                    (item.Kind == LeftoverKind.RegistryKey && AtOrBelow(Path, item.Target) ||
+                     ValueName is not null && item.Kind == LeftoverKind.RegistryValue &&
+                     Paths.Equals(item.Target, Path) && Paths.Equals(item.ValueName, ValueName));
             return item.Kind == LeftoverKind.File && Paths.Equals(Path, item.Target) ||
                    item.Kind == LeftoverKind.Directory && AtOrBelow(Path, item.Target);
         }
 
         public bool AllowsQuarantine(LeftoverItem item, InstalledApp app) =>
-            Paths.Equals(Path, item.Target) || (!IsKey && item.Kind == LeftoverKind.Directory &&
+            (Paths.Equals(Path, item.Target) && (ValueName is null || item.Kind == LeftoverKind.RegistryValue)) ||
+            (!IsKey && item.Kind == LeftoverKind.Directory &&
                 (Paths.Equals(System.IO.Path.GetDirectoryName(Path), item.Target) ||
                  Paths.Equals(app.InstallLocation.TrimEnd('\\'), item.Target)));
 
@@ -163,7 +174,12 @@ internal static class RealAppVerification
             if (IsKey)
             {
                 using var key = Registry.CurrentUser.OpenSubKey(Path);
-                return key is null ? null : JsonSerializer.Serialize(ReadTree(key));
+                if (key is null)
+                    return null;
+                if (ValueName is null)
+                    return JsonSerializer.Serialize(ReadTree(key));
+                return key.GetValueNames().Contains(ValueName, Paths)
+                    ? JsonSerializer.Serialize(RegistryData.Read(key, ValueName)) : null;
             }
             try
             {

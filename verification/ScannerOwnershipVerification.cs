@@ -11,6 +11,7 @@ internal static class ScannerOwnershipVerification
         VerifySharedCommands(Path.Combine(productRoot, token), token);
         VerifyNameVariants(productRoot, token);
         VerifyCorroboratedInstallerName(productRoot, token);
+        VerifyLocalizedInstallerVersionAndStartup(productRoot, token);
     }
 
     private static void VerifySharedCommands(string root, string token)
@@ -149,6 +150,77 @@ internal static class ScannerOwnershipVerification
         View = RegistryView.Default,
         RegistryPath = $@"{InstalledApps.UninstallRegistryPath}\{name}"
     };
+
+    private static void VerifyLocalizedInstallerVersionAndStartup(string localRoot, string token)
+    {
+        const string runPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        const string version = "4.5.11";
+        var verificationDirectory = Path.GetDirectoryName(typeof(ScannerOwnershipVerification).Assembly.Location)!;
+        var installPath = Path.Combine(verificationDirectory, $"{token}-Install", token);
+        var executable = Path.Combine(installPath, "Downloader.exe");
+        var siblingExecutable = Path.Combine(installPath, "Unrelated.exe");
+        var settingsPath = Path.Combine(localRoot, token);
+        var runName = $"{token}-Run";
+        var siblingRunName = $"{token}-SiblingRun";
+        var app = Fixture($"{token} 版本 {version}") with
+        {
+            Version = version,
+            InstallLocation = installPath,
+            DisplayIcon = $"\"{executable}\",0"
+        };
+
+        Require(!Directory.Exists(settingsPath) && !File.Exists(executable) && !File.Exists(siblingExecutable),
+            "The localized installer fixture needs fresh settings and non-existent startup executables.");
+        Require(LeftoverScanner.TryValidateFileSystemTarget(installPath, out _),
+            "The verification application needs to run from an unprotected local development directory.");
+        using var startup = Registry.CurrentUser.OpenSubKey(runPath, writable: true)
+            ?? throw new InvalidOperationException("The Windows current-user Run key must be available for this registry fixture.");
+        Require(startup.GetValue(runName) is null && startup.GetValue(siblingRunName) is null,
+            "The startup fixture must only use new registry value names.");
+
+        try
+        {
+            Directory.CreateDirectory(settingsPath);
+            startup.SetValue(runName, $"\"{executable}\" --silence", RegistryValueKind.String);
+            startup.SetValue(siblingRunName, $"\"{siblingExecutable}\" --silence", RegistryValueKind.String);
+
+            var scan = LeftoverScanner.Scan(app, [app]);
+            Require(scan.Items.Any(item => IsDirectory(item, settingsPath) && item is
+                { Confidence: LeftoverConfidence.Possible, EvidenceKind: LeftoverEvidence.CorroboratedInstallerName }),
+                "The exact localized version suffix can corroborate the app's name in an independent profile directory.");
+            Require(scan.Items.Any(item => IsRunValue(item, runName) && item is
+                { Confidence: LeftoverConfidence.Strong, EvidenceKind: LeftoverEvidence.StartupCommand }
+                && string.Equals(item.EvidencePath, executable, StringComparison.OrdinalIgnoreCase)),
+                "The exact corroborated display executable is attributable outside standard application roots.");
+            Require(scan.Items.All(item => !IsRunValue(item, siblingRunName)),
+                "An alias cannot claim other executables in the same custom directory.");
+
+            var missingIcon = app with { DisplayIcon = "" };
+            RequireExcluded(missingIcon, [missingIcon], "An install folder alone cannot support the localized alias.");
+            var wrongVersion = app with { Version = "4.5.12" };
+            RequireExcluded(wrongVersion, [wrongVersion], "The localized suffix must agree with the registered version.");
+            var edition = Fixture($"{token} x64 (All users, 64-bit)");
+            RequireExcluded(app, [app, edition], "A different registered edition vetoes both localized candidates.");
+            var sharing = Fixture($"{token} Other product") with { UninstallString = $"\"{siblingExecutable}\" /uninstall" };
+            RequireExcluded(app, [app, sharing], "Another app's registered executable makes the custom directory shared.");
+        }
+        finally
+        {
+            startup.DeleteValue(runName, throwOnMissingValue: false);
+            startup.DeleteValue(siblingRunName, throwOnMissingValue: false);
+            DeleteEmptyDirectory(settingsPath);
+        }
+
+        bool IsRunValue(LeftoverItem item, string name) => item.Kind == LeftoverKind.RegistryValue
+            && item.Hive == RegistryHive.CurrentUser && string.Equals(item.Target, runPath, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.ValueName, name, StringComparison.OrdinalIgnoreCase);
+
+        void RequireExcluded(InstalledApp selected, InstalledApp[] inventory, string message)
+        {
+            var scan = LeftoverScanner.Scan(selected, inventory);
+            Require(scan.Items.All(item => !IsDirectory(item, settingsPath) && !IsRunValue(item, runName) && !IsRunValue(item, siblingRunName)), message);
+        }
+    }
 
     private static LeftoverItem? FindDirectory(InstalledApp app, string folder, InstalledApp[] inventory) =>
         LeftoverScanner.Scan(app, inventory).Items.SingleOrDefault(item => IsDirectory(item, folder));

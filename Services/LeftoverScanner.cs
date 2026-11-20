@@ -166,6 +166,10 @@ public static class LeftoverScanner
         return new ScanSession(app, installedApps, cancellationToken).Run();
     }
 
+    internal static bool StartupCommandStillMatches(string? command, string? expectedExecutable) =>
+        expectedExecutable is not null && ReadCommandExecutable(command) is { } path
+        && PathComparer.Equals(path, expectedExecutable);
+
     internal static string? FindCorroboratedInstallLocation(InstalledApp app, IReadOnlyList<InstalledApp> installedApps)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -588,7 +592,7 @@ public static class LeftoverScanner
                     }
 
                     var executable = ReadCommandExecutable(key.GetValue(name) as string);
-                    if (OwnsExecutable(executable))
+                    if (OwnsExecutable(executable, allowCorroboratedStartupIcon: true))
                     {
                         Add(new LeftoverItem(LeftoverKind.RegistryValue, path, LeftoverEvidence.StartupCommand,
                             LeftoverConfidence.Strong, hive, view, name, evidencePath: executable));
@@ -718,7 +722,7 @@ public static class LeftoverScanner
             }
         }
 
-        private bool OwnsExecutable(string? path)
+        private bool OwnsExecutable(string? path, bool allowCorroboratedStartupIcon = false)
         {
             if (path is null)
             {
@@ -726,10 +730,12 @@ public static class LeftoverScanner
             }
 
             var inOwnedLocation = _ownedLocation is not null && IsAtOrUnder(path, _ownedLocation);
+            // A proved product alias can support the exact recorded startup executable, but cannot own its siblings.
+            var corroboratedStartupIcon = allowCorroboratedStartupIcon && _installationCandidate is not null && _nameOnlyAlias is not null;
             var matchesDisplayExecutable = !_ambiguousName && PathComparer.Equals(path, _displayExecutable)
-                && ProductRoots.Any(root => IsAtOrUnder(path, root))
-                && (_iconInferredLocation is not null
-                    || _names.Contains(Identity(Path.GetFileName(Path.GetDirectoryName(path) ?? string.Empty))));
+                && (corroboratedStartupIcon || (ProductRoots.Any(root => IsAtOrUnder(path, root))
+                    && (_iconInferredLocation is not null
+                        || _names.Contains(Identity(Path.GetFileName(Path.GetDirectoryName(path) ?? string.Empty))))));
             return (inOwnedLocation || matchesDisplayExecutable) && TryValidateFileSystemTarget(path, out _) && !IsShared(path);
         }
 
@@ -801,7 +807,11 @@ public static class LeftoverScanner
     private static string UndecoratedName(InstalledApp app)
     {
         var name = InstallerQualifierSuffix.Replace(app.Name.Trim(), "");
-        var withoutVersion = WithoutVersionSuffix(name, app.Version.Trim());
+        var version = app.Version.Trim();
+        var localizedSuffix = $" 版本 {version}";
+        var withoutVersion = version.Length > 0 && name.EndsWith(localizedSuffix, StringComparison.OrdinalIgnoreCase)
+            ? name[..^localizedSuffix.Length]
+            : WithoutVersionSuffix(name, version);
         return withoutVersion is null ? name : InstallerQualifierSuffix.Replace(withoutVersion, "");
     }
 
