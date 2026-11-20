@@ -1,0 +1,48 @@
+<Window x:Class="DeepUninstaller.BatchWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="780" Height="615" MinWidth="600" MinHeight="440"
+    WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="23">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,14">
+            <TextBlock x:Name="Heading" FontSize="26" FontWeight="SemiBold"/>
+            <TextBlock x:Name="HelpText" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+        </StackPanel>
+        <TextBox x:Name="Search" Grid.Row="1" Margin="0,0,0,10" TextChanged="OnSearch"/>
+        <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+            <Grid>
+                <DataGrid x:Name="Choices" IsReadOnly="True" CanUserSortColumns="False" Margin="1,1,1,5">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Width="45" CanUserSort="False">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              AutomationProperties.Name="{Binding App.Name}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn x:Name="AppColumn" Binding="{Binding App.Name}" Width="2*" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="PublisherColumn" Binding="{Binding App.Publisher}" Width="*" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="VersionColumn" Binding="{Binding App.Version}" Width="110" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="ScopeColumn" Binding="{Binding App.Scope}" Width="115" ElementStyle="{StaticResource CellText}"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock x:Name="Empty" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Style="{StaticResource MutedText}" IsHitTestVisible="False"/>
+            </Grid>
+        </Border>
+        <DockPanel Grid.Row="3" Margin="0,13,0,0">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                <Button x:Name="CancelButton" IsCancel="True" MinWidth="76"/>
+                <Button x:Name="StartButton" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="OnStart"/>
+            </StackPanel>
+            <TextBlock x:Name="CountText" VerticalAlignment="Center" Style="{StaticResource MutedText}"/>
+        </DockPanel>
+    </Grid>
+</Window>
