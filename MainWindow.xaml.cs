@@ -517,7 +517,7 @@ public partial class MainWindow : Window
         var available = !busy && row?.Session.Entries.Any(entry =>
             entry.State is CleanupState.Pending or CleanupState.Quarantined or CleanupState.Failed) == true;
         RestoreButton.IsEnabled = available;
-        DiscardButton.IsEnabled = available;
+        DiscardButton.IsEnabled = available || !busy && row?.Session.Entries.Any(entry => entry.State == CleanupState.DiscardInProgress) == true;
     }
 
     private async void OnRestore(object sender, RoutedEventArgs e)
@@ -532,7 +532,7 @@ public partial class MainWindow : Window
             var session = await Task.Run(() => recovery.Restore(row.Session.Id));
             await RefreshHistory(session.Id);
             SetStatus(Text($"该次记录已恢复 {session.Entries.Count(entry => entry.State == CleanupState.Restored)} 项，", $"Restored {session.Entries.Count(entry => entry.State == CleanupState.Restored)} items. ")
-                + Text($"待核对 {session.Entries.Count(entry => entry.State == CleanupState.Failed)} 项。", $"{session.Entries.Count(entry => entry.State == CleanupState.Failed)} need review."));
+                + Text($"待核对 {new SessionRow(session).Failed} 项。", $"{new SessionRow(session).Failed} need review."));
         });
     }
 
@@ -548,7 +548,7 @@ public partial class MainWindow : Window
             var session = await Task.Run(() => recovery.Discard(row.Session.Id));
             await RefreshHistory(session.Id);
             SetStatus(Text($"该次记录已删除 {session.Entries.Count(entry => entry.State == CleanupState.Discarded)} 项恢复副本，", $"Deleted {session.Entries.Count(entry => entry.State == CleanupState.Discarded)} recovery copies. ")
-                + Text($"待核对 {session.Entries.Count(entry => entry.State == CleanupState.Failed)} 项。", $"{session.Entries.Count(entry => entry.State == CleanupState.Failed)} need review."));
+                + Text($"待核对 {new SessionRow(session).Failed} 项。", $"{new SessionRow(session).Failed} need review."));
         });
     }
 
@@ -612,7 +612,7 @@ public partial class MainWindow : Window
         public string Time => Session.CreatedAt.LocalDateTime.ToString("g", Culture);
         public int Quarantined => Session.Entries.Count(entry => entry.State == CleanupState.Quarantined);
         public int Restored => Session.Entries.Count(entry => entry.State == CleanupState.Restored);
-        public int Failed => Session.Entries.Count(entry => entry.State is CleanupState.Pending or CleanupState.Failed or CleanupState.Skipped);
+        public int Failed => Session.Entries.Count(entry => entry.State is CleanupState.Pending or CleanupState.Failed or CleanupState.Skipped or CleanupState.DiscardInProgress);
     }
 
     private sealed record AttemptRow(UninstallAttempt Attempt)
@@ -641,6 +641,7 @@ public partial class MainWindow : Window
             CleanupState.Skipped => Text("已跳过", "Skipped"),
             CleanupState.Failed => Text("需处理", "Needs attention"),
             CleanupState.Discarded => Text("副本已删除", "Copy deleted"),
+            CleanupState.DiscardInProgress => Text("待继续删除", "Retry deletion"),
             _ => Entry.State.ToString()
         };
     }

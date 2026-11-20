@@ -8,7 +8,7 @@
     <AssemblyName>UninstallTrace</AssemblyName>
     <Product>UninstallTrace</Product>
     <Description>Windows uninstaller with leftover review and recovery</Description>
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <RepositoryUrl>https://github.com/shuimowang/UninstallTrace</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <ApplicationManifest>app.manifest</ApplicationManifest>

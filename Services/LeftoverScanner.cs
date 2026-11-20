@@ -89,6 +89,7 @@ public static class LeftoverScanner
     private const uint ShellLinkRawPath = 4;
     private static readonly Guid ShellLinkClassId = new("00021401-0000-0000-C000-000000000046");
     private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly Regex ExecutableEnd = new(@"\.exe(?=\s|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly HashSet<string> ReservedDosNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
@@ -219,7 +220,8 @@ public static class LeftoverScanner
         private readonly HashSet<string> _names;
         private readonly string? _publisher;
         private readonly string? _displayExecutable;
-        private readonly (string? Location, string? Executable)[] _otherLocations;
+        private readonly string[] _otherLocations;
+        private readonly string[] _otherExecutables;
         private readonly bool _ambiguousName;
         private readonly Dictionary<string, LeftoverItem> _items = new(PathComparer);
         private readonly HashSet<string> _warnings = new(StringComparer.Ordinal);
@@ -234,11 +236,15 @@ public static class LeftoverScanner
             _names = IdentityNames(app);
             var publisher = Identity(app.Publisher);
             _publisher = publisher.Length > 2 && !_names.Contains(publisher)
-                && (!SharedNames.Contains(publisher) || publisher == "microsoft") ? publisher : null;
+                && (!IsSharedName(publisher) || publisher == "microsoft") ? publisher : null;
             _displayExecutable = ReadDisplayExecutable(app.DisplayIcon);
             var others = installedApps.Where(other => !PathComparer.Equals(other.Id, app.Id)).ToArray();
-            _otherLocations = others.Select(other =>
-                (NormalizePath(other.InstallLocation), ReadDisplayExecutable(other.DisplayIcon))).ToArray();
+            _otherLocations = others.Select(other => NormalizePath(other.InstallLocation))
+                .OfType<string>().Distinct(PathComparer).ToArray();
+            _otherExecutables = others.SelectMany(other => ReadRecordedExecutables(other.UninstallString)
+                    .Concat(ReadRecordedExecutables(other.QuietUninstallString))
+                    .Append(ReadDisplayExecutable(other.DisplayIcon)))
+                .OfType<string>().Distinct(PathComparer).ToArray();
             _ambiguousName = others.Any(other => _names.Overlaps(IdentityNames(other))
                 || _names.Contains(Identity(other.Publisher)));
         }
@@ -276,7 +282,7 @@ public static class LeftoverScanner
             var iconInside = _displayExecutable is not null && IsAtOrUnder(_displayExecutable, path)
                 && TryValidateFileSystemTarget(_displayExecutable, out _);
             var directDriveChild = PathComparer.Equals(Path.GetDirectoryName(path), Path.GetPathRoot(path));
-            if (!TryValidateFileSystemTarget(path, out var reason) || SharedNames.Contains(leaf)
+            if (!TryValidateFileSystemTarget(path, out var reason) || IsSharedName(leaf)
                 || IsShared(path) || (!_names.Contains(leaf) && !iconInside) || (!insideProductRoot && directDriveChild))
             {
                 reason ??= Localization.Text("目录可能由多个应用共用，或缺少独占归属证据。",
@@ -685,9 +691,9 @@ public static class LeftoverScanner
                     || _names.Contains(Identity(Path.GetFileName(Path.GetDirectoryName(path) ?? string.Empty))));
         }
 
-        private bool IsShared(string path) => _otherLocations.Any(other =>
-            (other.Location is not null && (IsAtOrUnder(other.Location, path) || IsAtOrUnder(path, other.Location)))
-            || (other.Executable is not null && IsAtOrUnder(other.Executable, path)));
+        private bool IsShared(string path) =>
+            _otherLocations.Any(other => IsAtOrUnder(other, path) || IsAtOrUnder(path, other))
+            || _otherExecutables.Any(executable => IsAtOrUnder(executable, path));
 
         private void Add(LeftoverItem item)
         {
@@ -706,8 +712,8 @@ public static class LeftoverScanner
         void AddName(string name)
         {
             var token = Identity(name);
-            if (token.Length >= (token.Any(character => character > 127) ? 2 : 3)
-                && !SharedNames.Contains(token) && token != publisher && token.Any(char.IsLetter))
+            if (token.Count(char.IsLetterOrDigit) >= (token.Any(character => character > 127) ? 2 : 3)
+                && !IsSharedName(token) && token != publisher && token.Any(char.IsLetter))
             {
                 result.Add(token);
             }
@@ -730,8 +736,12 @@ public static class LeftoverScanner
         return result;
     }
 
-    private static string Identity(string value) => new(value.Where(char.IsLetterOrDigit)
-        .Select(char.ToLowerInvariant).ToArray());
+    private static string Identity(string value) => new(value
+        .Where(character => char.IsLetterOrDigit(character) || character is '+' or '#' or '＋' or '＃')
+        .Select(character => character switch { '＋' => '+', '＃' => '#', _ => char.ToLowerInvariant(character) })
+        .ToArray());
+
+    private static bool IsSharedName(string identity) => SharedNames.Contains(identity.Replace("+", "").Replace("#", ""));
 
     private static string? ReadDisplayExecutable(string text)
     {
@@ -767,6 +777,31 @@ public static class LeftoverScanner
 
         var endOfPath = value.AsSpan().IndexOfAny(' ', '\t');
         return ReadDirectExecutable(endOfPath < 0 ? value : value[..endOfPath]);
+    }
+
+    private static IEnumerable<string> ReadRecordedExecutables(string command)
+    {
+        var text = Environment.ExpandEnvironmentVariables(command.Trim());
+        if (text.StartsWith('"'))
+        {
+            var end = text.IndexOf('"', 1);
+            if (end > 1 && (end + 1 == text.Length || char.IsWhiteSpace(text[end + 1]))
+                && ReadDirectExecutable(text[1..end]) is { } executable)
+            {
+                yield return executable;
+            }
+
+            yield break;
+        }
+
+        // Each absolute prefix is a veto only. Unquoted spaces can leave more than one plausible executable.
+        foreach (Match suffix in ExecutableEnd.Matches(text))
+        {
+            if (ReadDirectExecutable(text[..(suffix.Index + suffix.Length)]) is { } executable)
+            {
+                yield return executable;
+            }
+        }
     }
 
     private static string? NormalizePath(string? value, bool expandEnvironment = true)

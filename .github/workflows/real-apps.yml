@@ -1,0 +1,62 @@
+name: Real Windows uninstall checks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/real-apps.yml'
+      - 'Services/LeftoverScanner.cs'
+      - 'Services/RecoveryService.cs'
+      - 'Services/UninstallCommand.cs'
+      - 'verification/RealAppVerification.cs'
+      - 'verification/real-apps.ps1'
+
+permissions:
+  contents: read
+
+jobs:
+  uninstall:
+    name: Vendor uninstall and recovery (${{ matrix.product }})
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [SumatraPDF, WinMerge]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 59b26836231c5e478b7207d66576d5efceb401c6 # v0.1.3
+          path: reference
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build both scanners with the same measurement code
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath candidate/verification/RealAppVerification.cs -Destination reference/verification/
+          Set-Content -LiteralPath reference/verification/Program.cs -Value 'return RealAppVerification.Run(args);'
+          dotnet build reference/verification/DeepUninstaller.Verification.csproj -c Release -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build candidate/verification/DeepUninstaller.Verification.csproj -c Release -warnaserror
+      - name: Exercise the vendor installer, measure leftovers, and verify recovery
+        env:
+          UNINSTALLTRACE_DISPOSABLE_RUNNER: ${{ runner.environment }}
+          TEST_PRODUCT: ${{ matrix.product }}
+        shell: pwsh
+        run: |
+          $harness = 'verification/bin/Release/net10.0-windows/DeepUninstaller.Verification.dll'
+          ./candidate/verification/real-apps.ps1 -Product $env:TEST_PRODUCT -VerificationDll (Resolve-Path "candidate/$harness") -ReferenceDll (Resolve-Path "reference/$harness") -ReportDirectory (Join-Path $env:RUNNER_TEMP 'uninstall-results')
+      - name: Save the scanner comparison
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: uninstall-reports-${{ matrix.product }}
+          path: ${{ runner.temp }}/uninstall-results/*-report.json
+          retention-days: 14
+          if-no-files-found: warn

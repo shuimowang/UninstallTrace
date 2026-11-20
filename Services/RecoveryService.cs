@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Win32;
@@ -9,7 +11,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace DeepUninstaller.Services;
 
-public enum CleanupState { Pending, Quarantined, Restored, Skipped, Failed, Discarded }
+public enum CleanupState { Pending, Quarantined, Restored, Skipped, Failed, Discarded, DiscardInProgress }
 
 public sealed record RecoveryNote(string Chinese, string English)
 {
@@ -177,7 +179,7 @@ public sealed class RecoveryService
         var session = Load(id);
         foreach (var entry in session.Entries.AsEnumerable().Reverse())
         {
-            if (entry.State is CleanupState.Restored or CleanupState.Skipped or CleanupState.Discarded)
+            if (entry.State is CleanupState.Restored or CleanupState.Skipped or CleanupState.Discarded or CleanupState.DiscardInProgress)
                 continue;
             ExecuteEntry(session, entry, () => RestoreEntry(session, entry), CleanupState.Restored);
         }
@@ -231,7 +233,8 @@ public sealed class RecoveryService
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or System.Security.SecurityException or InvalidOperationException or ArgumentException)
         {
-            entry.State = CleanupState.Failed;
+            if (entry.State != CleanupState.DiscardInProgress)
+                entry.State = CleanupState.Failed;
             entry.Note = exception.Message;
             entry.LocalizedNote = (exception as RecoveryIOException)?.Details;
         }
@@ -318,16 +321,78 @@ public sealed class RecoveryService
         }
         else
         {
-            using (var existing = hive.OpenSubKey(item.Target))
-            {
-                if (existing is not null)
-                    throw new RecoveryIOException("原注册表项已被占用，备份仍保留。",
-                        "The original registry key is occupied. The backup was kept.");
-            }
-            using var restored = hive.CreateSubKey(item.Target, writable: true);
-            WriteTree(restored, backup);
+            RestoreRegistryTree(hive, item.Target, item.View.Value, backup);
         }
         entry.RegistryBackup = null;
+    }
+
+    private static void RestoreRegistryTree(RegistryKey hive, string target, RegistryView view, RegistryTree backup)
+    {
+        using (var existing = hive.OpenSubKey(target))
+        {
+            if (existing is not null)
+                throw new RecoveryIOException("原注册表项已被占用，备份仍保留。",
+                    "The original registry key is occupied. The backup was kept.");
+        }
+
+        var separator = target.LastIndexOf('\\');
+        var parentPath = target[..separator];
+        var targetName = target[(separator + 1)..];
+        using var parent = hive.CreateSubKey(parentPath, writable: true);
+        EnsurePlainRegistryPath(hive, parentPath, view);
+
+        const int createdNewKey = 1;
+        var stagingName = $"UninstallTrace-Restore-{Guid.NewGuid():N}";
+        var access = (int)(RegistryRights.ReadKey | RegistryRights.WriteKey | RegistryRights.Delete) | (int)view;
+        var result = RegCreateKeyEx(parent.Handle, stagingName, 0, null, 0,
+            access, IntPtr.Zero, out var handle, out var disposition);
+        using (handle)
+        {
+            if (result != 0)
+            {
+                var detail = new Win32Exception(result).Message;
+                throw new RecoveryIOException($"无法创建注册表恢复暂存项。{detail}",
+                    $"Could not create the registry staging key for restore. {detail}");
+            }
+            if (disposition != createdNewKey)
+                throw new RecoveryIOException("暂存注册表项已存在，请重试。",
+                    "The registry staging key already exists. Try again.");
+
+            using var staging = RegistryKey.FromHandle(handle, view);
+            var renamed = false;
+            try
+            {
+                WriteTree(staging, backup);
+                if (!TreesEqual(backup, Snapshot(staging, view)))
+                    throw new RecoveryIOException("暂存内容与备份不一致，原位置未改动。",
+                        "The staged registry data did not match the backup. The original location was left alone.");
+
+                // Windows refuses to rename onto an existing key, including a key created during staging.
+                result = RegRenameKey(handle, null, targetName);
+                if (result != 0)
+                {
+                    var detail = new Win32Exception(result).Message;
+                    throw new RecoveryIOException($"无法还原原注册表项，备份仍保留。{detail}",
+                        $"Could not restore the original registry key. The backup was kept. {detail}");
+                }
+                renamed = true;
+            }
+            finally
+            {
+                if (!renamed)
+                    RemoveOwnedStagingKey(handle, view, stagingName);
+            }
+        }
+    }
+
+    private static void RemoveOwnedStagingKey(SafeRegistryHandle key, RegistryView view, string stagingName)
+    {
+        // Keep the original handle so cleanup cannot delete a replacement that happens to use the same name.
+        var result = RegDeleteTree(key, null);
+        if (result == 0)
+            result = RegDeleteKeyEx(key, "", (int)view, 0);
+        if (result != 0)
+            Trace.TraceWarning($"Registry restore staging key {stagingName} could not be removed (Windows error {result}).");
     }
 
     private void DeleteQuarantine(CleanupSession session, CleanupEntry entry)
@@ -338,6 +403,10 @@ public sealed class RecoveryService
             return;
         var isDirectory = entry.Item.Kind == LeftoverKind.Directory;
         EnsurePlainTree(path, isDirectory);
+        // Recursive deletion may remove some children before encountering a locked file.
+        // Persist intent first so a retry or restart cannot offer a partial tree for restore.
+        entry.State = CleanupState.DiscardInProgress;
+        Save(session);
         if (isDirectory)
             Directory.Delete(path, recursive: true);
         else
@@ -562,4 +631,17 @@ public sealed class RecoveryService
 
     [DllImport("advapi32.dll", EntryPoint = "RegQueryValueExW", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern int RegQueryValueEx(SafeRegistryHandle key, string name, IntPtr reserved, out int type, IntPtr data, ref uint size);
+
+    [DllImport("advapi32.dll", EntryPoint = "RegCreateKeyExW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int RegCreateKeyEx(SafeRegistryHandle key, string name, int reserved, string? keyClass,
+        int options, int access, IntPtr security, out SafeRegistryHandle result, out int disposition);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int RegRenameKey(SafeRegistryHandle key, string? oldName, string newName);
+
+    [DllImport("advapi32.dll", EntryPoint = "RegDeleteTreeW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int RegDeleteTree(SafeRegistryHandle key, string? name);
+
+    [DllImport("advapi32.dll", EntryPoint = "RegDeleteKeyExW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int RegDeleteKeyEx(SafeRegistryHandle key, string name, int view, int reserved);
 }

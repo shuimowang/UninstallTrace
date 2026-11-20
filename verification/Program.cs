@@ -10,11 +10,17 @@ const string ProofText = "fixture command argument with spaces";
 
 if (args is ["--fixture-uninstall", var childId, ProofText])
     return RunFixtureUninstaller(childId);
+if (args.Length != 0 && args[0].StartsWith("--real-", StringComparison.Ordinal))
+    return RealAppVerification.Run(args);
 if (args.Length != 0)
     return 1;
 
 ThemeVerification.Run();
 Checkpoint("Dark theme on application windows");
+ScannerOwnershipVerification.Run();
+Checkpoint("Shared uninstallers and punctuation-sensitive app names");
+RegistryRestoreVerification.Run();
+Checkpoint("Atomic registry restore and conflict handling");
 
 (string Name, DateTime? Date)[] datedRows =
 [
@@ -144,6 +150,21 @@ try
     Require(File.ReadAllText(leftoverFile) == "fixture residue", "The original file was restored without modification.");
     Require(CheckRegistry(softwareKey), "Registry values, value types, and subkeys were restored.");
     Checkpoint("File and registry restore");
+    File.WriteAllText(Path.Combine(installPath, "sibling.txt"), "second file");
+    var toDiscard = recovery.Clean(app, [ownedDirectory]);
+    Require(toDiscard.Entries.Single().State == CleanupState.Quarantined, "The disposal fixture was quarantined.");
+    var payload = Directory.EnumerateFiles(tempPath, "retained.txt", SearchOption.AllDirectories).Single();
+    using (File.Open(payload, FileMode.Open, FileAccess.Read, FileShare.Read))
+    {
+        var interrupted = recovery.Discard(toDiscard.Id);
+        Require(interrupted.Entries.Single().State == CleanupState.DiscardInProgress,
+            "An interrupted discard must keep its irreversible state.");
+        Require(recovery.Restore(toDiscard.Id).Entries.Single().State == CleanupState.DiscardInProgress &&
+                !Directory.Exists(installPath), "A partial backup must not be presented as a full recovery.");
+    }
+    Require(recovery.Discard(toDiscard.Id).Entries.Single().State == CleanupState.Discarded && !File.Exists(payload),
+        "Discarding should succeed when retried after unlocking the file.");
+    Checkpoint("Interrupted permanent deletion and retry");
     return 0;
 }
 finally
