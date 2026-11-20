@@ -21,7 +21,11 @@ public partial class MainWindow : Window
     private string? workflowStatusPrefix;
     private string? restoredSelection;
     private MainView currentView;
+    private AppSortColumn appSortColumn = AppSortColumn.InstalledOn;
+    private ListSortDirection appSortDirection = ListSortDirection.Descending;
+    private bool synchronizingAppSort;
     private enum MainView { Apps, Attempts, Recovery, Settings }
+    private enum AppSortColumn { InstalledOn, Name, Publisher, Version, Size }
 
     public MainWindow() : this(startInSettings: false) { }
 
@@ -40,6 +44,8 @@ public partial class MainWindow : Window
 
     internal void RestoreAppListView(MainWindow previous)
     {
+        appSortColumn = previous.appSortColumn;
+        appSortDirection = previous.appSortDirection;
         SearchInput.Text = previous.SearchInput.Text;
         IncludeProtected.IsChecked = previous.IncludeProtected.IsChecked;
         restoredSelection = (previous.AppGrid.SelectedItem as AppRow)?.App.Id;
@@ -173,20 +179,107 @@ public partial class MainWindow : Window
             ApplyFilter();
     }
 
+    private void OnAppSortChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!initialized || synchronizingAppSort)
+            return;
+
+        var sort = AppSortSelector.SelectedIndex switch
+        {
+            0 => (AppSortColumn.InstalledOn, ListSortDirection.Descending),
+            1 => (AppSortColumn.InstalledOn, ListSortDirection.Ascending),
+            2 => (AppSortColumn.Name, ListSortDirection.Ascending),
+            3 => (AppSortColumn.Name, ListSortDirection.Descending),
+            _ => (appSortColumn, appSortDirection),
+        };
+        SetAppSort(sort.Item1, sort.Item2);
+    }
+
+    private void OnAppGridSorting(object sender, DataGridSortingEventArgs e)
+    {
+        if (!Enum.TryParse<AppSortColumn>(e.Column.SortMemberPath, out var column))
+            return;
+
+        e.Handled = true;
+        var direction = column == AppSortColumn.InstalledOn ? ListSortDirection.Descending : ListSortDirection.Ascending;
+        if (column == appSortColumn)
+            direction = appSortDirection == ListSortDirection.Ascending ? ListSortDirection.Descending : ListSortDirection.Ascending;
+        SetAppSort(column, direction);
+    }
+
+    private void SetAppSort(AppSortColumn column, ListSortDirection direction)
+    {
+        if (column == appSortColumn && direction == appSortDirection)
+            return;
+
+        appSortColumn = column;
+        appSortDirection = direction;
+        ApplyFilter();
+    }
+
     private void ApplyFilter()
     {
         var selected = (AppGrid.SelectedItem as AppRow)?.App.Id ?? restoredSelection;
         restoredSelection = null;
         var query = SearchInput.Text.Trim();
-        var visible = apps.Where(app => (IncludeProtected.IsChecked == true || !app.IsProtected) &&
-            (query.Length == 0 || Contains(app.Name, query) || Contains(app.Publisher, query) || Contains(app.Version, query)))
-            .Select(app => new AppRow(app)).ToArray();
+        var matching = apps.Where(app => (IncludeProtected.IsChecked == true || !app.IsProtected) &&
+            (query.Length == 0 || Contains(app.Name, query) || Contains(app.Publisher, query) || Contains(app.Version, query)));
+        var visible = OrderApps(matching).Select(app => new AppRow(app)).ToArray();
         AppGrid.ItemsSource = visible;
         AppGrid.SelectedItem = visible.FirstOrDefault(row => row.App.Id == selected) ?? visible.FirstOrDefault();
+        UpdateAppSortIndicators();
         InventoryCount.Text = Text($"{visible.Length} 个程序", $"{visible.Length} apps");
         InventoryEmpty.Text = query.Length > 0 ? Text("没有匹配的程序", "No apps match your search") : Text("没有可显示的程序", "No apps to display");
         InventoryEmpty.Visibility = visible.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateSelection();
+    }
+
+    private IOrderedEnumerable<InstalledApp> OrderApps(IEnumerable<InstalledApp> matching)
+    {
+        var comparer = StringComparer.Create(Culture, ignoreCase: true);
+        var ordered = appSortColumn switch
+        {
+            AppSortColumn.InstalledOn => InstallDateOrder.Sort(matching, app => app.InstalledOn, appSortDirection),
+            AppSortColumn.Publisher => By(app => app.Publisher, comparer),
+            AppSortColumn.Version => By(app => app.Version, comparer),
+            AppSortColumn.Size => By(app => app.EstimatedSizeBytes),
+            _ => By(app => app.Name, comparer),
+        };
+
+        return ordered.ThenBy(app => app.Name, comparer).ThenBy(app => app.Publisher, comparer)
+            .ThenBy(app => app.Id, StringComparer.OrdinalIgnoreCase);
+
+        IOrderedEnumerable<InstalledApp> By<T>(Func<InstalledApp, T> selector, IComparer<T>? keyComparer = null) =>
+            appSortDirection == ListSortDirection.Ascending
+                ? matching.OrderBy(selector, keyComparer)
+                : matching.OrderByDescending(selector, keyComparer);
+    }
+
+    private void UpdateAppSortIndicators()
+    {
+        var member = appSortColumn.ToString();
+        var activeColumn = AppGrid.Columns.First(column => column.SortMemberPath == member);
+        foreach (var column in AppGrid.Columns)
+            column.SortDirection = column == activeColumn ? appSortDirection : null;
+
+        var preset = appSortColumn switch
+        {
+            AppSortColumn.InstalledOn => appSortDirection == ListSortDirection.Descending ? 0 : 1,
+            AppSortColumn.Name => appSortDirection == ListSortDirection.Ascending ? 2 : 3,
+            _ => 4,
+        };
+        if (preset == 4)
+        {
+            var arrow = appSortDirection == ListSortDirection.Ascending ? "↑" : "↓";
+            HeaderAppSort.Content = $"{activeColumn.Header} {arrow}";
+            HeaderAppSort.Visibility = Visibility.Visible;
+        }
+
+        synchronizingAppSort = true;
+        AppSortSelector.SelectedIndex = preset;
+        synchronizingAppSort = false;
+        if (preset != 4)
+            HeaderAppSort.Visibility = Visibility.Collapsed;
     }
 
     private static bool Contains(string text, string query) => text.Contains(query, StringComparison.CurrentCultureIgnoreCase);
@@ -397,7 +490,7 @@ public partial class MainWindow : Window
     private async Task RefreshHistory(Guid? selected = null)
     {
         selected ??= (HistoryGrid.SelectedItem as SessionRow)?.Session.Id;
-        SetStatus(Text("正在读取恢复历史…", "Loading recovery history…"));
+        SetStatus(Text("正在读取清理恢复记录…", "Loading cleanup recovery records…"));
         var warnings = new List<string>();
         var history = await Task.Run(() => recovery.ReadHistory(warnings.Add));
         var rows = history.Select(session => new SessionRow(session)).ToArray();
@@ -435,7 +528,7 @@ public partial class MainWindow : Window
             return;
         await RunBusy(async () =>
         {
-            SetStatus(Text("正在恢复选中的清理记录…", "Restoring the selected cleanup session…"));
+            SetStatus(Text("正在恢复选中记录的隔离项…", "Restoring quarantined items for the selected session…"));
             var session = await Task.Run(() => recovery.Restore(row.Session.Id));
             await RefreshHistory(session.Id);
             SetStatus(Text($"该次记录已恢复 {session.Entries.Count(entry => entry.State == CleanupState.Restored)} 项，", $"Restored {session.Entries.Count(entry => entry.State == CleanupState.Restored)} items. ")
@@ -504,6 +597,7 @@ public partial class MainWindow : Window
         public string Name => App.Name;
         public string Publisher => App.Publisher.Length == 0 ? "—" : App.Publisher;
         public string Version => App.Version.Length == 0 ? "—" : App.Version;
+        public string InstallDate => App.InstalledOn?.ToString("d", Culture) ?? Text("未登记", "Unknown");
         public string Size => App.EstimatedSizeBytes switch
         {
             >= 1L << 30 => $"{App.EstimatedSizeBytes / (double)(1L << 30):0.##} GB",

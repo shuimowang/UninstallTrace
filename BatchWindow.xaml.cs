@@ -8,7 +8,8 @@ namespace DeepUninstaller;
 
 public partial class BatchWindow : Window
 {
-    private readonly BatchRow[] rows;
+    private BatchRow[] rows;
+    private ListSortDirection dateDirection = ListSortDirection.Descending;
 
     public BatchWindow(IReadOnlyList<InstalledApp> apps)
     {
@@ -21,6 +22,7 @@ public partial class BatchWindow : Window
         AutomationProperties.SetName(Search, Localization.Text("搜索队列候选程序", "Search available programs"));
         Search.ToolTip = AutomationProperties.GetName(Search);
         AppColumn.Header = Localization.Text("程序", "Program");
+        DateColumn.Header = Localization.Text("安装日期", "Installed");
         PublisherColumn.Header = Localization.Text("发布者", "Publisher");
         VersionColumn.Header = Localization.Text("版本", "Version");
         ScopeColumn.Header = Localization.Text("安装范围", "Install scope");
@@ -29,12 +31,29 @@ public partial class BatchWindow : Window
         StartButton.Content = Localization.Text("启动队列", "Start queue");
         foreach (var row in rows)
             row.PropertyChanged += (_, _) => UpdateCount();
-        Filter();
+        SortRows();
         UpdateCount();
         Loaded += (_, _) => Search.Focus();
     }
 
     public IReadOnlyList<InstalledApp> SelectedApps => rows.Where(row => row.Selected).Select(row => row.App).ToArray();
+
+    private void OnSort(object sender, DataGridSortingEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Column != DateColumn)
+            return;
+        dateDirection = dateDirection == ListSortDirection.Descending ? ListSortDirection.Ascending : ListSortDirection.Descending;
+        SortRows();
+    }
+
+    private void SortRows()
+    {
+        rows = InstallDateOrder.Sort(rows, row => row.App.InstalledOn, dateDirection)
+            .ThenBy(row => row.App.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(row => row.App.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+        Filter();
+    }
 
     private void OnSearch(object sender, TextChangedEventArgs e)
     {
@@ -48,6 +67,7 @@ public partial class BatchWindow : Window
         var result = rows.Where(row => row.App.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase) ||
                                        row.App.Publisher.Contains(text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
         Choices.ItemsSource = result;
+        DateColumn.SortDirection = dateDirection;
         Empty.Visibility = result.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -77,6 +97,7 @@ public partial class BatchWindow : Window
     {
         private bool selected;
         public InstalledApp App { get; } = app;
+        public string DateLabel => App.InstalledOn?.ToString("d", Localization.Culture) ?? Localization.Text("未登记", "Unknown");
         public event PropertyChangedEventHandler? PropertyChanged;
 
         public bool Selected

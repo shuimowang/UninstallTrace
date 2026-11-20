@@ -2,16 +2,18 @@
 
 [简体中文](README.zh-CN.md) · [Download for Windows](https://github.com/shuimowang/UninstallTrace/releases/latest) · [Competitive analysis](docs/competitive-analysis.md)
 
-UninstallTrace runs the original Windows uninstaller, checks what it left behind, and explains why each remaining item belongs to the app. You choose what to quarantine. Recovery history lets you restore that cleanup or free the space by permanently deleting its quarantine.
+UninstallTrace runs the original Windows uninstaller, checks what it left behind, and explains why each remaining item belongs to the app. You choose what to quarantine. Cleanup recovery lets you restore quarantined files and registry data or permanently delete their copies to free space.
 
 ## Use it
 
 1. Open `UninstallTrace.exe` from the release. The Windows x64 build includes its .NET runtime.
-2. Search for the program by name, publisher, or version. Press **Ctrl+F** to focus search or **F5** to refresh the list.
+2. Programs with a recorded install date appear newest first. Unknown dates appear last. Click the install-date column header to reverse date order. Press **Ctrl+F** to search by name, publisher, or version and **F5** to refresh.
 3. Choose **Run uninstaller** to start the original remover or **Scan for leftovers** to inspect a damaged or stale registration. Use **Scan removed app** for a program missing from the list.
-4. Check the location and evidence for the leftovers you want to quarantine. Open **Recovery history** to restore the selected cleanup at any time before discarding its backups.
+4. Check the location and evidence for the leftovers you want to quarantine. Open **Cleanup recovery** to restore the files and registry entries from a cleanup before discarding its backups. To use the removed program again, reinstall it with its installer or through the Store.
 
 The language setting supports English, Simplified Chinese, and automatic selection from Windows. **Batch uninstall** runs vendor removers sequentially, reviews leftovers per program, and pauses when a result needs attention. **Uninstall history** lets you resume a scan later or after a restart.
+
+Desktop install dates come from uninstall registrations. Some installers omit the date. Applying an MSI patch or performing a repair can update it. Store apps use the package installation or last update date reported by Windows. [Microsoft's MSI date documentation](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)
 
 ## What it checks
 

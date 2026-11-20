@@ -34,10 +34,10 @@
                         </StackPanel>
                     </Button>
                     <Button x:Name="HistoryNav" Style="{StaticResource NavButton}" Click="ShowHistory" Margin="0,0,0,4"
-                            AutomationProperties.Name="{local:UiText '恢复历史', 'Recovery history'}">
+                            AutomationProperties.Name="{local:UiText '清理恢复', 'Cleanup recovery'}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE81A;" FontFamily="Segoe MDL2 Assets" Width="24" VerticalAlignment="Center"/>
-                            <TextBlock Text="{local:UiText '恢复历史', 'Recovery history'}"/>
+                            <TextBlock Text="{local:UiText '清理恢复', 'Cleanup recovery'}"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="SettingsNav" Style="{StaticResource NavButton}" Click="ShowSettings"
@@ -106,6 +106,18 @@
                 </Grid>
                 <DockPanel Grid.Row="1" Margin="0,0,0,8">
                     <TextBlock x:Name="InventoryCount" DockPanel.Dock="Right" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                        <Label Content="{local:UiText '排序', 'Sort'}" Target="{Binding ElementName=AppSortSelector}"
+                               Foreground="{StaticResource MutedBrush}" Padding="0,0,6,0" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="AppSortSelector" Width="120" MinHeight="29" SelectedIndex="0" SelectionChanged="OnAppSortChanged"
+                                  AutomationProperties.Name="{local:UiText '已安装程序排序', 'Sort installed apps'}">
+                            <ComboBoxItem Content="{local:UiText '最新安装优先', 'Newest first'}"/>
+                            <ComboBoxItem Content="{local:UiText '最早安装优先', 'Oldest first'}"/>
+                            <ComboBoxItem Content="{local:UiText '名称 A–Z', 'Name A–Z'}"/>
+                            <ComboBoxItem Content="{local:UiText '名称 Z–A', 'Name Z–A'}"/>
+                            <ComboBoxItem x:Name="HeaderAppSort" IsEnabled="False" Visibility="Collapsed"/>
+                        </ComboBox>
+                    </StackPanel>
                     <WrapPanel>
                         <Button x:Name="BatchButton" Content="{local:UiText '批量卸载', 'Batch uninstall'}" Click="OnBatchUninstall"
                                 Margin="0,0,6,0" IsEnabled="False"
@@ -125,13 +137,21 @@
                     </Grid.ColumnDefinitions>
                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
                         <Grid>
-                            <DataGrid x:Name="AppGrid" Margin="1,1,1,4" IsReadOnly="True" SelectionChanged="OnAppSelected"
+                            <DataGrid x:Name="AppGrid" Margin="1,1,1,4" IsReadOnly="True" SelectionChanged="OnAppSelected" Sorting="OnAppGridSorting"
                                       AutomationProperties.Name="{local:UiText '已安装程序', 'Installed apps'}">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Name}" Width="2.3*" MinWidth="128" ElementStyle="{StaticResource CellText}"/>
-                                    <DataGridTextColumn Header="{local:UiText '发布者', 'Publisher'}" Binding="{Binding Publisher}" Width="1.25*" MinWidth="85" ElementStyle="{StaticResource CellText}"/>
-                                    <DataGridTextColumn Header="{local:UiText '版本', 'Version'}" Binding="{Binding Version}" Width="*" MinWidth="70" ElementStyle="{StaticResource CellText}"/>
-                                    <DataGridTextColumn Header="{local:UiText '大小', 'Size'}" Binding="{Binding Size}" Width="83" SortMemberPath="App.EstimatedSizeBytes" ElementStyle="{StaticResource CellText}"/>
+                                    <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Name}" Width="2.3*" MinWidth="112" SortMemberPath="Name" ElementStyle="{StaticResource CellText}"/>
+                                    <DataGridTextColumn Header="{local:UiText '发布者', 'Publisher'}" Binding="{Binding Publisher}" Width="1.25*" MinWidth="79" SortMemberPath="Publisher" ElementStyle="{StaticResource CellText}"/>
+                                    <DataGridTextColumn Header="{local:UiText '版本', 'Version'}" Binding="{Binding Version}" Width="*" MinWidth="64" SortMemberPath="Version" ElementStyle="{StaticResource CellText}"/>
+                                    <DataGridTextColumn Header="{local:UiText '安装日期', 'Installed'}" Binding="{Binding InstallDate}"
+                                                        Width="100" SortMemberPath="InstalledOn" ElementStyle="{StaticResource CellText}">
+                                        <DataGridTextColumn.HeaderStyle>
+                                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DarkGridHeader}">
+                                                <Setter Property="ToolTip" Value="{local:UiText '日期来自 Windows 卸载登记。MSI 更新或修复后，该日期可能变化。', 'Date from the Windows uninstall registration. MSI updates or repairs can change it.'}"/>
+                                            </Style>
+                                        </DataGridTextColumn.HeaderStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="{local:UiText '大小', 'Size'}" Binding="{Binding Size}" Width="70" SortMemberPath="Size" ElementStyle="{StaticResource CellText}"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                             <TextBlock x:Name="InventoryEmpty" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource MutedText}"/>
@@ -191,11 +211,15 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <WrapPanel Margin="0,0,0,8">
-                    <Button x:Name="RestoreButton" Content="{local:UiText '恢复该次清理', 'Restore cleanup'}" Style="{StaticResource PrimaryButton}" Click="OnRestore" IsEnabled="False" Margin="0,0,6,0"/>
-                    <Button x:Name="DiscardButton" Content="{local:UiText '永久删除恢复副本', 'Permanently delete recovery copies'}" Click="OnDiscard" IsEnabled="False" Margin="0,0,6,0"/>
-                    <Button Content="{local:UiText '刷新历史', 'Refresh history'}" Click="OnHistoryRefresh"/>
-                </WrapPanel>
+                <StackPanel Margin="0,0,0,8">
+                    <WrapPanel>
+                        <Button x:Name="RestoreButton" Content="{local:UiText '恢复隔离项', 'Restore quarantined items'}" Style="{StaticResource PrimaryButton}" Click="OnRestore" IsEnabled="False" Margin="0,0,6,0"/>
+                        <Button x:Name="DiscardButton" Content="{local:UiText '永久删除恢复副本', 'Permanently delete recovery copies'}" Click="OnDiscard" IsEnabled="False" Margin="0,0,6,0"/>
+                        <Button Content="{local:UiText '刷新', 'Refresh'}" Click="OnHistoryRefresh"/>
+                    </WrapPanel>
+                    <TextBlock Text="{local:UiText '仅恢复本工具隔离的文件和注册表项。要重新安装软件，请使用安装包或应用商店。', 'Restore files and registry items quarantined here. To reinstall an app, use its installer or the Store.'}"
+                               Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                </StackPanel>
                 <Grid Grid.Row="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="2*" MinHeight="100"/>
@@ -205,7 +229,7 @@
                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
                         <Grid>
                             <DataGrid x:Name="HistoryGrid" Margin="1,1,1,4" IsReadOnly="True" SelectionChanged="OnSessionSelected"
-                                      AutomationProperties.Name="{local:UiText '恢复历史', 'Recovery history'}">
+                                      AutomationProperties.Name="{local:UiText '清理恢复', 'Cleanup recovery'}">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Session.AppName}" Width="*" ElementStyle="{StaticResource CellText}"/>
                                     <DataGridTextColumn Header="{local:UiText '清理时间', 'Cleaned'}" Binding="{Binding Time}" Width="165" SortMemberPath="Session.CreatedAt" ElementStyle="{StaticResource CellText}"/>

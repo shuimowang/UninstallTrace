@@ -152,6 +152,7 @@ public static class InstalledApps
         return kilobytes is > 0 and <= long.MaxValue / 1024 ? kilobytes * 1024 : null;
     }
 
+    // Windows Installer can update InstallDate during servicing. Missing dates stay unknown.
     private static DateTime? ReadDate(RegistryKey key) =>
         DateTime.TryParseExact(ReadText(key, "InstallDate"), "yyyyMMdd", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out var date) ? date : null;

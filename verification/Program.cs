@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using DeepUninstaller.Services;
 using Microsoft.Win32;
@@ -14,6 +15,18 @@ if (args.Length != 0)
 
 ThemeVerification.Run();
 Checkpoint("Dark theme on application windows");
+
+(string Name, DateTime? Date)[] datedRows =
+[
+    ("missing A", null), ("newer A", new(2026, 8, 2)), ("older", new(2024, 10, 1)),
+    ("newer B", new(2026, 8, 2)), ("missing B", null)
+];
+var newest = InstallDateOrder.Sort(datedRows, row => row.Date, ListSortDirection.Descending);
+var oldest = InstallDateOrder.Sort(datedRows, row => row.Date, ListSortDirection.Ascending);
+Require(newest.Select(row => row.Name).SequenceEqual(["newer A", "newer B", "older", "missing A", "missing B"]) &&
+        oldest.Select(row => row.Name).SequenceEqual(["older", "newer A", "newer B", "missing A", "missing B"]),
+    "Date sorting should keep unknown dates last and preserve the order of equal dates.");
+Checkpoint("Newest and oldest sorting with unknown install dates");
 
 var id = Guid.NewGuid().ToString("N");
 var name = FixturePrefix + id;
@@ -42,6 +55,7 @@ try
     {
         key.SetValue("DisplayName", name);
         key.SetValue("DisplayVersion", "1.2.3");
+        key.SetValue("InstallDate", "20240229");
         key.SetValue("Publisher", "DeepUninstaller Verification");
         key.SetValue("InstallLocation", installPath);
         key.SetValue("UninstallString", $"\"{appHost}\" --fixture-uninstall {id} \"{ProofText}\"");
@@ -61,6 +75,7 @@ try
     var app = inventory.Single(entry => entry.Name == name);
     Require(app.Hive == RegistryHive.CurrentUser, "Inventory preserved the per-user scope.");
     Require(app.Version == "1.2.3" && app.InstallLocation == installPath, "Inventory preserved application metadata.");
+    Require(app.InstalledOn == new DateTime(2024, 2, 29), "Inventory preserved the recorded install date.");
     Require(InstalledApps.IsRegistered(app), "The fixture is registered before uninstall.");
     var initialScan = LeftoverScanner.Scan(app, inventory);
     Require(initialScan.Items.Any(item => item.Kind == LeftoverKind.RegistryKey && item.Hive == RegistryHive.CurrentUser

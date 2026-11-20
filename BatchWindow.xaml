@@ -15,7 +15,7 @@
         <TextBox x:Name="Search" Grid.Row="1" Margin="0,0,0,8" TextChanged="OnSearch"/>
         <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>
-                <DataGrid x:Name="Choices" IsReadOnly="True" CanUserSortColumns="False" Margin="1,1,1,5">
+                <DataGrid x:Name="Choices" IsReadOnly="True" Sorting="OnSort" Margin="1,1,1,5">
                     <DataGrid.Columns>
                         <DataGridTemplateColumn Width="45" CanUserSort="False">
                             <DataGridTemplateColumn.CellTemplate>
@@ -25,10 +25,11 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn x:Name="AppColumn" Binding="{Binding App.Name}" Width="2*" ElementStyle="{StaticResource CellText}"/>
-                        <DataGridTextColumn x:Name="PublisherColumn" Binding="{Binding App.Publisher}" Width="*" ElementStyle="{StaticResource CellText}"/>
-                        <DataGridTextColumn x:Name="VersionColumn" Binding="{Binding App.Version}" Width="110" ElementStyle="{StaticResource CellText}"/>
-                        <DataGridTextColumn x:Name="ScopeColumn" Binding="{Binding App.Scope}" Width="115" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="AppColumn" Binding="{Binding App.Name}" CanUserSort="False" Width="2*" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="DateColumn" Binding="{Binding DateLabel}" Width="106" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="PublisherColumn" Binding="{Binding App.Publisher}" CanUserSort="False" Width="*" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="VersionColumn" Binding="{Binding App.Version}" CanUserSort="False" Width="83" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="ScopeColumn" Binding="{Binding App.Scope}" CanUserSort="False" Width="95" ElementStyle="{StaticResource CellText}"/>
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock x:Name="Empty" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"

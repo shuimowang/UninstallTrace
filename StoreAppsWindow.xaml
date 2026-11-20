@@ -47,7 +47,7 @@
 
         <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
             <Grid>
-                <DataGrid x:Name="StoreGrid" IsReadOnly="True" Margin="1,1,1,5" SelectionChanged="OnSelectionChanged"
+                <DataGrid x:Name="StoreGrid" IsReadOnly="True" Margin="1,1,1,5" SelectionChanged="OnSelectionChanged" Sorting="OnSorting"
                           AutomationProperties.Name="{local:UiText '商店应用包', 'Store app packages'}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{local:UiText '应用', 'App'}" Binding="{Binding App.DisplayName}"
@@ -56,6 +56,14 @@
                                             Width="1.5*" ElementStyle="{StaticResource CellText}"/>
                         <DataGridTextColumn Header="{local:UiText '版本', 'Version'}" Binding="{Binding App.Version}"
                                             Width="100" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="StoreDateColumn" Header="{local:UiText '安装/更新日期', 'Installed / updated'}"
+                                            Binding="{Binding InstalledDate}" Width="145" ElementStyle="{StaticResource CellText}">
+                            <DataGridTextColumn.HeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DarkGridHeader}">
+                                    <Setter Property="ToolTip" Value="{local:UiText 'Windows 记录的安装或最近更新日期，未知日期排在最后。', 'The installation or last update date recorded by Windows. Unknown dates appear last.'}"/>
+                                </Style>
+                            </DataGridTextColumn.HeaderStyle>
+                        </DataGridTextColumn>
                         <DataGridTextColumn Header="{local:UiText '卸载状态', 'Removal status'}" Binding="{Binding State}"
                                             Width="140" ElementStyle="{StaticResource CellText}"/>
                     </DataGrid.Columns>

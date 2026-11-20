@@ -13,6 +13,7 @@ public partial class StoreAppsWindow : Window
     private CancellationTokenSource? inventoryRead;
     private bool removing;
     private bool closed;
+    private ListSortDirection? dateSort = ListSortDirection.Descending;
     private bool Busy => inventoryRead is not null || removing;
 
     public StoreAppsWindow() => InitializeComponent();
@@ -128,13 +129,29 @@ public partial class StoreAppsWindow : Window
     {
         var previous = (StoreGrid.SelectedItem as StoreRow)?.App.FullName;
         var query = StoreSearch.Text.Trim();
-        var visible = rows.Where(row => (IncludeProtected.IsChecked == true || row.App.CanRemove) && row.Matches(query)).ToArray();
+        var matches = rows.Where(row => (IncludeProtected.IsChecked == true || row.App.CanRemove) && row.Matches(query));
+        var visible = (dateSort is { } direction ? InstallDateOrder.Sort(matches, row => row.App.InstalledOn, direction) : matches).ToArray();
         StoreGrid.ItemsSource = visible;
+        StoreDateColumn.SortDirection = dateSort;
         StoreGrid.SelectedItem = visible.FirstOrDefault(row => string.Equals(row.App.FullName, previous, StringComparison.OrdinalIgnoreCase));
         EmptyText.Text = query.Length > 0
             ? Localization.Text("没有匹配的应用包。", "No matching app packages.")
             : Localization.Text("没有可显示的应用包。", "No app packages to display.");
         EmptyText.Visibility = visible.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnSorting(object sender, DataGridSortingEventArgs e)
+    {
+        if (e.Column != StoreDateColumn)
+        {
+            dateSort = null;
+            StoreDateColumn.SortDirection = null;
+            return;
+        }
+
+        e.Handled = true;
+        dateSort = dateSort == ListSortDirection.Descending ? ListSortDirection.Ascending : ListSortDirection.Descending;
+        ApplyFilter();
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -162,6 +179,7 @@ public partial class StoreAppsWindow : Window
     private sealed class StoreRow(StoreApp app)
     {
         public StoreApp App { get; } = app;
+        public string InstalledDate => App.InstalledOn?.LocalDateTime.ToString("d", Localization.Culture) ?? "—";
 
         public string State => App.Protection switch
         {

@@ -9,6 +9,7 @@ namespace DeepUninstaller.Services;
 public sealed record StoreApp(string Name, string FamilyName, string FullName, string Version, string DisplayName, string Protection)
 {
     public bool CanRemove => Protection is "" && StoreApps.IsValidPackageFullName(FullName);
+    public DateTimeOffset? InstalledOn { get; init; }
 }
 
 public enum StoreRemovalResult { Removed, SelectionChanged, Protected, StillRegistered }
@@ -73,19 +74,47 @@ public static partial class StoreApps
                 # Start menu names are optional. The package name is always available.
             }
 
+            $dates = @{}
+            try {
+                $manager = [Windows.Management.Deployment.PackageManager,Windows.Management.Deployment,ContentType=WindowsRuntime]::new()
+                $epoch = [DateTimeOffset]::FromFileTime(0)
+                foreach ($registered in $manager.FindPackagesForUser('')) {
+                    try {
+                        $date = $registered.InstalledDate
+                        if ($date -is [DateTimeOffset] -and $date -gt $epoch) {
+                            $dates[[string]$registered.Id.FullName] = $date.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+                        }
+                    } catch {
+                        # Some individual packages cannot provide deployment metadata.
+                    }
+                }
+            } catch {
+                # Optional dates must not prevent use of the Appx inventory or removal workflow.
+            }
+
             $rows = foreach ($group in (Read-PackageGroups)) {
                 $package = Get-PreferredPackage $group
                 $name = [string]$package.Name
                 $family = [string]$package.PackageFamilyName
+                $fullName = [string]$package.PackageFullName
+                $version = [string]$package.Version
                 $displayName = $names[$family]
                 if ([string]::IsNullOrWhiteSpace($displayName)) { $displayName = $name }
+                $installedOn = $dates[$fullName]
+                if ($null -eq $installedOn -and $package.IsBundle -eq $true) {
+                    $main = @($group.Group | Where-Object {
+                        $_.IsBundle -eq $false -and $_.PackageFamilyName -eq $family -and [string]$_.Version -eq $version
+                    })
+                    if ($main.Count -eq 1) { $installedOn = $dates[[string]$main[0].PackageFullName] }
+                }
                 [pscustomobject]@{
                     Name = $name
                     FamilyName = $family
-                    FullName = [string]$package.PackageFullName
-                    Version = [string]$package.Version
+                    FullName = $fullName
+                    Version = $version
                     DisplayName = $displayName
                     Protection = Get-Protection $group
+                    InstalledOn = $installedOn
                 }
             }
             [Console]::WriteLine((ConvertTo-Json -InputObject @($rows) -Depth 2 -Compress))
