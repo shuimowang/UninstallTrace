@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:DeepUninstaller"
+    Style="{StaticResource DarkWindowStyle}"
     Title="{local:UiText '商店应用', 'Store apps'}" Width="970" Height="660" MinWidth="690" MinHeight="500"
     WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Loaded="OnLoaded" Closing="OnClosing">
     <Grid Margin="25,21,25,19">

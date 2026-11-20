@@ -1,3 +1,4 @@
+using System.IO;
 using DeepUninstaller.Services;
 using Microsoft.Win32;
 
@@ -10,6 +11,9 @@ if (args is ["--fixture-uninstall", var childId, ProofText])
     return RunFixtureUninstaller(childId);
 if (args.Length != 0)
     return 1;
+
+ThemeVerification.Run();
+Checkpoint("Dark theme on application windows");
 
 var id = Guid.NewGuid().ToString("N");
 var name = FixturePrefix + id;

@@ -1,6 +1,7 @@
 <Window x:Class="DeepUninstaller.OrphanScanWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Style="{StaticResource DarkWindowStyle}"
     Width="620" SizeToContent="Height" MinWidth="520" ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <StackPanel Margin="23">

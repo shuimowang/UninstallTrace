@@ -33,6 +33,7 @@ internal static class UiPrompt
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag),
         };
+        dialog.SetResourceReference(FrameworkElement.StyleProperty, "DarkWindowStyle");
         var layout = new DockPanel { Margin = new Thickness(22, 22, 22, 19) };
         dialog.PreviewKeyDown += (_, args) =>
         {
