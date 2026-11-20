@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Media;
 using DeepUninstaller;
+using DeepUninstaller.Services;
 
 internal static class ThemeVerification
 {
@@ -36,7 +37,7 @@ internal static class ThemeVerification
         [
             new MainWindow(),
             new BatchWindow([]),
-            new ReviewWindow("Theme fixture", "Theme fixture", new([], []), false, false),
+            new ReviewWindow(new() { Name = "Theme fixture" }, "Theme fixture", new([], []), false, false),
             new OrphanScanWindow(),
             new StoreAppsWindow()
         ];
@@ -55,6 +56,7 @@ internal static class ThemeVerification
             VerifyContrast("Selected row text", text, GetColor("AccentBackgroundBrush"));
             VerifyContrast("Primary button text", GetColor("AccentTextBrush"), GetColor("AccentBrush"));
             VerifyContrast("Disabled button text", GetColor("DisabledTextBrush"), GetColor("DisabledSurfaceBrush"));
+            VerifyServiceReview();
         }
         finally
         {
@@ -64,6 +66,20 @@ internal static class ThemeVerification
         }
 
         Color GetColor(string key) => ((SolidColorBrush)app.FindResource(key)).Color;
+    }
+
+    private static void VerifyServiceReview()
+    {
+        var folder = new LeftoverItem(LeftoverKind.Directory, @"C:\Program Files\Example", "test", LeftoverConfidence.Strong);
+        var sibling = folder with { Target = @"C:\Program Files\Example Tools" };
+        var review = new ReviewWindow(new InstalledApp { Name = "Example" }, "", new([folder, sibling], []), true, false);
+        try
+        {
+            review.ApplyServiceReport(new(true, [new("ExampleSvc", "Example service", folder.Target + @"\svc.exe")], []));
+            if (!review.SelectedItems.SequenceEqual([sibling]))
+                throw new InvalidOperationException("The service's install folder must require explicit selection.");
+        }
+        finally { review.Close(); }
     }
 
     private static void VerifyContrast(string name, Color foreground, Color background)

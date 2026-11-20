@@ -14,14 +14,18 @@ public partial class ReviewWindow : Window
     private readonly ReviewRow[] rows;
     private readonly bool needsConsent;
     private readonly bool readOnly;
+    private readonly InstalledApp app;
+    private CancellationTokenSource? serviceRead;
+    public int? RelatedServices { get; private set; }
 
-    public ReviewWindow(string appName, string summary, LeftoverScanResult result, bool registrationConfirmedGone, bool readOnly)
+    public ReviewWindow(InstalledApp app, string summary, LeftoverScanResult result, bool registrationConfirmedGone, bool readOnly)
     {
+        this.app = app;
         InitializeComponent();
         Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag);
         this.readOnly = readOnly;
         needsConsent = !registrationConfirmedGone && !readOnly;
-        ProductText.Text = appName;
+        ProductText.Text = app.Name;
         SummaryText.Text = summary;
         rows = result.Items.OrderBy(item => item.Confidence).ThenBy(item => item.Kind).ThenBy(item => item.Target, StringComparer.CurrentCultureIgnoreCase)
             .Select(item => new ReviewRow(item, registrationConfirmedGone && !readOnly && item.IsRecommended))
@@ -46,6 +50,68 @@ public partial class ReviewWindow : Window
     }
 
     public IReadOnlyList<LeftoverItem> SelectedItems => rows.Where(row => row.IsSelected).Select(row => row.Item).ToArray();
+
+    private async void OnServicesExpanded(object sender, RoutedEventArgs e)
+    {
+        using var request = new CancellationTokenSource();
+        serviceRead = request;
+        RelatedServices = null;
+        UpdateCount();
+        ServicesText.Text = Text("正在检查服务登记…", "Reading service registrations…");
+        try
+        {
+            var report = await Task.Run(() => ServiceResidueScanner.Scan(app, InstalledApps.Read(), request.Token), request.Token);
+            if (request.IsCancellationRequested)
+                return;
+            ApplyServiceReport(report);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            if (!request.IsCancellationRequested)
+                ServicesText.Text = Text($"无法完成服务检查。{exception.Message}", $"Could not complete the service check. {exception.Message}");
+        }
+        finally
+        {
+            if (serviceRead == request)
+            {
+                serviceRead = null;
+                UpdateCount();
+            }
+        }
+    }
+
+    internal void ApplyServiceReport(ServiceResidueReport report)
+    {
+        var lines = new List<string>();
+        if (!report.HasOwnershipEvidence)
+            lines.Add(Text("现有安装登记不足以确认独占安装目录。", "There is insufficient registration evidence for an exclusive install folder."));
+        else if (report.Matches.Count == 0)
+            lines.Add(Text("在可读取的登记中，未找到直接指向此目录的独立服务。", "No readable own-process service registration points directly into this folder."));
+        else
+        {
+            lines.Add(Text("以下服务仍有登记。包含其程序路径的候选项需手动勾选。", "These services are registered. Items containing their executable paths require manual selection."));
+            foreach (var match in report.Matches)
+            {
+                var name = string.IsNullOrEmpty(match.DisplayName) || match.ServiceName == match.DisplayName
+                    ? match.ServiceName : $"{match.DisplayName} ({match.ServiceName})";
+                lines.Add($"{name}  —  {match.ExecutablePath}");
+            }
+        }
+        foreach (var row in rows)
+            row.SetServiceMatch(report.Matches.Any(service => row.ContainsExecutable(service.ExecutablePath)));
+        lines.AddRange(report.Warnings);
+        RelatedServices = report.HasOwnershipEvidence ? report.Matches.Count : null;
+        ServicesText.Text = string.Join(Environment.NewLine, lines);
+    }
+
+    private void OnServicesCollapsed(object sender, RoutedEventArgs e) => serviceRead?.Cancel();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        serviceRead?.Cancel();
+        base.OnClosed(e);
+    }
 
     public static string DescribeTarget(LeftoverItem item)
     {
@@ -83,7 +149,7 @@ public partial class ReviewWindow : Window
     private void OnSelectStrong(object sender, RoutedEventArgs e)
     {
         foreach (var row in rows)
-            row.IsSelected = row.Item.IsRecommended;
+            row.IsSelected = row.RecommendSelection;
     }
 
     private void OnClear(object sender, RoutedEventArgs e)
@@ -98,7 +164,7 @@ public partial class ReviewWindow : Window
     {
         var selected = rows.Count(row => row.IsSelected);
         ReviewCount.Text = readOnly ? Text($"找到 {rows.Length} 项", $"{rows.Length} items found") : Text($"找到 {rows.Length} 项，已选 {selected} 项", $"{rows.Length} found, {selected} selected");
-        CleanButton.IsEnabled = !readOnly && selected > 0 && (!needsConsent || ManualConsent.IsChecked == true);
+        CleanButton.IsEnabled = serviceRead is null && !readOnly && selected > 0 && (!needsConsent || ManualConsent.IsChecked == true);
     }
 
     private void OnClean(object sender, RoutedEventArgs e)
@@ -113,7 +179,21 @@ public partial class ReviewWindow : Window
         public event PropertyChangedEventHandler? PropertyChanged;
         public LeftoverItem Item { get; } = item;
         public string Target => DescribeTarget(Item);
-        public string Confidence => Item.IsRecommended ? Text("强归属", "Strong match") : Text("需核对", "Needs review");
+        private bool containsService;
+        public bool RecommendSelection => Item.IsRecommended && !containsService;
+        public string Confidence => containsService ? Text("关联服务", "Service path") :
+            Item.IsRecommended ? Text("强归属", "Strong match") : Text("需核对", "Needs review");
+        public bool ContainsExecutable(string path) =>
+            (Item.Kind == LeftoverKind.File && string.Equals(path, Item.Target, StringComparison.OrdinalIgnoreCase)) ||
+            (Item.Kind == LeftoverKind.Directory && path.StartsWith(System.IO.Path.TrimEndingDirectorySeparator(Item.Target) +
+                System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        public void SetServiceMatch(bool matched)
+        {
+            if (matched) IsSelected = false;
+            if (containsService == matched) return;
+            containsService = matched;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Confidence)));
+        }
         public string Kind => Item.Kind switch
         {
             LeftoverKind.File => Text("文件", "File"),

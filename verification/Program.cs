@@ -23,6 +23,8 @@ ThemeVerification.Run();
 Checkpoint("Dark theme on application windows");
 ScannerOwnershipVerification.Run();
 Checkpoint("Shared uninstallers and punctuation-sensitive app names");
+ServiceResidueVerification.Run();
+Checkpoint("Read-only service attribution and shared host exclusions");
 RegistryRestoreVerification.Run();
 Checkpoint("Atomic registry restore and conflict handling");
 

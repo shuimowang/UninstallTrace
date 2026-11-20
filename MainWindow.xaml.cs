@@ -425,7 +425,7 @@ public partial class MainWindow : Window
     {
         SetStatus(Text($"正在扫描「{app.Name}」的残留…", $"Scanning for leftovers from {app.Name}…"));
         var result = await Task.Run(() => LeftoverScanner.Scan(app, InstalledApps.Read()));
-        var review = new ReviewWindow(app.Name, summary, result, registrationConfirmedGone, readOnly) { Owner = this };
+        var review = new ReviewWindow(app, summary, result, registrationConfirmedGone, readOnly) { Owner = this };
         if (review.ShowDialog() == true)
         {
             SetStatus(Text($"正在隔离「{app.Name}」的选中残留…", $"Quarantining the selected leftovers from {app.Name}…"));
@@ -440,7 +440,10 @@ public partial class MainWindow : Window
         }
         apps = await Task.Run(InstalledApps.Read);
         ApplyFilter();
-        SetStatus(result.Items.Count == 0 ? Text("本次扫描未发现可归属的残留。", "No attributable leftovers were found.") : Text($"扫描发现 {result.Items.Count} 项，未执行清理。", $"Found {result.Items.Count} items. No items were cleaned."));
+        var services = review.RelatedServices is > 0
+            ? Text($"另发现 {review.RelatedServices} 条关联服务登记。", $" Found {review.RelatedServices} related service registrations.") : "";
+        SetStatus((result.Items.Count == 0 ? Text("未发现可归属的文件或注册表项。", "No attributable files or registry items were found.")
+            : Text($"扫描发现 {result.Items.Count} 项，未执行清理。", $"Found {result.Items.Count} items. No items were cleaned.")) + services);
     }
 
     private async void OnAttemptsRefresh(object sender, RoutedEventArgs e) => await RunBusy(RefreshAttempts);

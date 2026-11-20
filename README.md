@@ -20,15 +20,18 @@ Desktop install dates come from uninstall registrations. Some installers omit th
 - Desktop uninstall registrations for the current user and machine, including 32-bit and 64-bit entries and verified MSI product codes.
 - Dedicated install folders, application data locations, software registry keys, App Paths, Run and RunOnce, and directly attributable shortcuts.
 - Shared locations, Windows and user folders, filesystem links, and ownership changes discovered when rechecking selected items.
+- Expand **Inspect related services** during leftover review to see standalone Windows services whose registered executable points into the app's corroborated, exclusive installation folder. Matches show the name and executable path. Items containing those paths require manual selection after inspection. Service registrations are read-only.
 - Current-user Store packages through Windows package management. System and protected packages are view-only. Windows manages package removal and its data.
 
-Name matches alone require a manual selection. The recovery vault covers the files and registry data quarantined by UninstallTrace. Changes made by vendor uninstallers and Windows package removal are outside that vault. Locked or inaccessible items are recorded for review. Hidden artifacts owned by services, scheduled tasks, drivers, or other users, and changes that require installation-time tracing, are outside the current cleanup scope.
+Name matches alone require a manual selection. The recovery vault covers the files and registry data quarantined by UninstallTrace. Changes made by vendor uninstallers and Windows package removal are outside that vault. Locked or inaccessible items are recorded for review. Service removal, scheduled tasks, drivers, other users' data, and changes that require installation-time tracing are outside the current cleanup scope.
 
 ## Build and verify
 
 Use the .NET 10 SDK on Windows. The integration harness uses temporary files and current-user registry fixtures to test scanning, ownership checks, quarantine, and restoration.
 
 The [real Windows uninstall checks](.github/workflows/real-apps.yml) use separate disposable Windows machines for SumatraPDF and WinMerge. They compare the scanner with v0.1.3 on the same post-uninstall state and verify quarantine and restoration against known files, registry data, and shared-folder controls. [Method and results](docs/uninstall-verification.md)
+
+For paired scan times and the C#/Rust Windows API experiment, see [scanner performance](docs/scanner-performance.md).
 
 ```powershell
 dotnet build -c Release

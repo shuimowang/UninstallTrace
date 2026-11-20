@@ -166,6 +166,13 @@ public static class LeftoverScanner
         return new ScanSession(app, installedApps, cancellationToken).Run();
     }
 
+    internal static string? FindCorroboratedInstallLocation(InstalledApp app, IReadOnlyList<InstalledApp> installedApps)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        ArgumentNullException.ThrowIfNull(installedApps);
+        return app.IsProtected ? null : new ScanSession(app, installedApps, CancellationToken.None).FindCorroboratedInstallLocation();
+    }
+
     public static bool TryValidateFileSystemTarget(string target, out string? reason)
     {
         var path = NormalizePath(target, expandEnvironment: false);
@@ -292,12 +299,8 @@ public static class LeftoverScanner
             var insideProductRoot = ProductRoots.Any(root => IsAtOrUnder(path, root));
             var iconInside = _displayExecutable is not null && IsAtOrUnder(_displayExecutable, path)
                 && TryValidateFileSystemTarget(_displayExecutable, out _);
-            var directDriveChild = PathComparer.Equals(Path.GetDirectoryName(path), Path.GetPathRoot(path));
-            if (!TryValidateFileSystemTarget(path, out var reason) || IsSharedName(leaf)
-                || IsShared(path) || (!_names.Contains(leaf) && !iconInside) || (!insideProductRoot && directDriveChild))
+            if (!TryValidateInstallLocation(path, leaf, insideProductRoot, iconInside, out var reason))
             {
-                reason ??= Localization.Text("目录可能由多个应用共用，或缺少独占归属证据。",
-                    "The folder may be shared by multiple apps or lack evidence that it belongs to this app exclusively.");
                 _warnings.Add(Localization.Text($"已跳过安装位置 {path}。{reason}",
                     $"Skipped install location {path}. {reason}"));
                 return;
@@ -318,6 +321,35 @@ public static class LeftoverScanner
                     iconInside ? LeftoverEvidence.InstallLocationWithIcon : LeftoverEvidence.InstallLocationMatchesName,
                     _ownedLocation is null ? LeftoverConfidence.Possible : LeftoverConfidence.Strong));
             }
+        }
+
+        public string? FindCorroboratedInstallLocation()
+        {
+            if (_ambiguousName || NormalizePath(_app.InstallLocation) is not { } path
+                || _displayExecutable is null || PathComparer.Equals(_displayExecutable, path)
+                || !IsAtOrUnder(_displayExecutable, path) || !TryValidateFileSystemTarget(_displayExecutable, out _))
+            {
+                return null;
+            }
+
+            var leaf = Identity(Path.GetFileName(path));
+            var insideProductRoot = ProductRoots.Any(root => IsAtOrUnder(path, root));
+            return MatchesNameOnly(leaf) && TryValidateInstallLocation(path, leaf, insideProductRoot, iconInside: true, out _)
+                ? path : null;
+        }
+
+        private bool TryValidateInstallLocation(string path, string leaf, bool insideProductRoot, bool iconInside, out string? reason)
+        {
+            var directDriveChild = PathComparer.Equals(Path.GetDirectoryName(path), Path.GetPathRoot(path));
+            if (!TryValidateFileSystemTarget(path, out reason) || IsSharedName(leaf)
+                || IsShared(path) || (!_names.Contains(leaf) && !iconInside) || (!insideProductRoot && directDriveChild))
+            {
+                reason ??= Localization.Text("目录可能由多个应用共用，或缺少独占归属证据。",
+                    "The folder may be shared by multiple apps or lack evidence that it belongs to this app exclusively.");
+                return false;
+            }
+
+            return true;
         }
 
         private void ScanDisplayIconLocation()
@@ -688,20 +720,17 @@ public static class LeftoverScanner
 
         private bool OwnsExecutable(string? path)
         {
-            if (path is null || !TryValidateFileSystemTarget(path, out _) || IsShared(path))
+            if (path is null)
             {
                 return false;
             }
 
-            if (_ownedLocation is not null && IsAtOrUnder(path, _ownedLocation))
-            {
-                return true;
-            }
-
-            return !_ambiguousName && PathComparer.Equals(path, _displayExecutable)
+            var inOwnedLocation = _ownedLocation is not null && IsAtOrUnder(path, _ownedLocation);
+            var matchesDisplayExecutable = !_ambiguousName && PathComparer.Equals(path, _displayExecutable)
                 && ProductRoots.Any(root => IsAtOrUnder(path, root))
                 && (_iconInferredLocation is not null
                     || _names.Contains(Identity(Path.GetFileName(Path.GetDirectoryName(path) ?? string.Empty))));
+            return (inOwnedLocation || matchesDisplayExecutable) && TryValidateFileSystemTarget(path, out _) && !IsShared(path);
         }
 
         private bool IsShared(string path) =>
