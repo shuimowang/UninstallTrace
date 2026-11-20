@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
 using static DeepUninstaller.Localization;
@@ -19,6 +20,7 @@ internal static class UiPrompt
             _ => [MessageBoxResult.OK],
         };
         var answer = choices[^1];
+        var defaultChoice = choices.Contains(defaultResult) ? defaultResult : answer;
         var dialog = new Window
         {
             Owner = owner,
@@ -32,6 +34,14 @@ internal static class UiPrompt
             Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag),
         };
         var layout = new DockPanel { Margin = new Thickness(22, 22, 22, 19) };
+        dialog.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Escape)
+            {
+                args.Handled = true;
+                dialog.DialogResult = false;
+            }
+        };
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -54,9 +64,10 @@ internal static class UiPrompt
                 },
                 MinWidth = 84,
                 Margin = new Thickness(8, 0, 0, 0),
-                IsDefault = choice == (choices.Contains(defaultResult) ? defaultResult : answer),
-                IsCancel = choice == choices[^1],
+                IsDefault = choice == defaultChoice,
             };
+            if (choice == defaultChoice)
+                dialog.Loaded += (_, _) => button.Focus();
             if (choice is MessageBoxResult.OK or MessageBoxResult.Yes)
                 button.SetResourceReference(FrameworkElement.StyleProperty, "PrimaryButton");
             button.Click += (_, _) =>
