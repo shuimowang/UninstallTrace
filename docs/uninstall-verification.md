@@ -14,3 +14,14 @@ The reports distinguish items the vendor removed, program-generated settings tha
 报告把原厂已删除的项目、程序写入并遗留的设置，以及卸载后人工放入的测试文件分别统计。共享目录场景使用模拟的第二条卸载登记。候选项经隔离与恢复后，再核对文件内容和注册表数据。这两款程序和这些已知位置只提供可复现的样本，不能据此推算全盘检出率、误删率或其他卸载工具的成绩。
 
 Both engine reports are attached to each successful [workflow run](https://github.com/shuimowang/UninstallTrace/actions/workflows/real-apps.yml). The regular [verification suite](../verification/Program.cs) also exercises interrupted deletion, registry restore failures, and name collisions.
+
+## v0.1.4 results / 本次结果
+
+| Installer | Artifacts watched before uninstall | Removed by vendor | Remaining settings found, v0.1.3 | Remaining settings found, v0.1.4 |
+| --- | ---: | ---: | ---: | ---: |
+| SumatraPDF | 1 | 0 | 1/1 | 1/1 |
+| WinMerge | 2 | 1 | 0/1 | 1/1 |
+
+Both versions found the artificial positive marker in each case and skipped both unrelated control paths per VM. When a simulated second registration pointed its uninstaller into the same install folder, v0.1.3 still offered the folder in both cases. v0.1.4 excluded both folders and preserved the peer file when it rechecked a selection made before the peer registered. With the peer removed, both quarantine-and-restore checks passed.
+
+WinMerge 的原厂卸载移除了它的注册表设置，遗留了程序按测试指定位置写出的 INI。v0.1.4 把该文件所在的配置目录作为需手动勾选的候选项列出。SumatraPDF 的设置目录在两个版本中均能识别。两组隔离与恢复都已核对文件内容。[逐项报告与运行日志](https://github.com/shuimowang/UninstallTrace/actions/runs/44755748850)
