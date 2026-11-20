@@ -10,7 +10,7 @@ public partial class OrphanScanWindow : Window
     public OrphanScanWindow()
     {
         InitializeComponent();
-        Title = Heading.Text = Localization.Text("扫描未登记的残留", "Scan orphaned leftovers");
+        Title = Localization.Text("扫描未登记的残留", "Scan orphaned leftovers");
         Help.Text = Localization.Text(
             "适用于已卸载或未出现在程序清单中的应用。输入完整的应用名称，以便按归属线索查找残留。",
             "Use this for software that was already removed or is missing from the program list. Enter its exact product name to look for attributable leftovers.");

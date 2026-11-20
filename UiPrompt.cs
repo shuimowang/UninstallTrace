@@ -25,8 +25,8 @@ internal static class UiPrompt
         {
             Owner = owner,
             Title = title,
-            Width = 480,
-            MaxHeight = 550,
+            Width = 450,
+            MaxHeight = 510,
             SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize,
             ShowInTaskbar = false,
@@ -34,7 +34,7 @@ internal static class UiPrompt
             Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag),
         };
         dialog.SetResourceReference(FrameworkElement.StyleProperty, "DarkWindowStyle");
-        var layout = new DockPanel { Margin = new Thickness(22, 22, 22, 19) };
+        var layout = new DockPanel { Margin = new Thickness(18, 16, 18, 16) };
         dialog.PreviewKeyDown += (_, args) =>
         {
             if (args.Key == Key.Escape)
@@ -47,7 +47,7 @@ internal static class UiPrompt
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 20, 0, 0),
+            Margin = new Thickness(0, 14, 0, 0),
         };
         DockPanel.SetDock(actions, Dock.Bottom);
         layout.Children.Add(actions);
@@ -91,8 +91,8 @@ internal static class UiPrompt
                     _ => "\uE946",
                 },
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 20,
-                Margin = new Thickness(0, 2, 12, 0),
+                FontSize = 18,
+                Margin = new Thickness(0, 1, 10, 0),
             };
             messageIcon.SetResourceReference(TextBlock.ForegroundProperty,
                 image is MessageBoxImage.Warning or MessageBoxImage.Error ? "WarningBrush" : "AccentBrush");
@@ -103,7 +103,7 @@ internal static class UiPrompt
         body.Children.Add(new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, LineHeight = 22 },
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, LineHeight = 19 },
         });
         layout.Children.Add(body);
         dialog.Content = layout;

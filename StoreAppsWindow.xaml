@@ -3,9 +3,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:DeepUninstaller"
     Style="{StaticResource DarkWindowStyle}"
-    Title="{local:UiText '商店应用', 'Store apps'}" Width="970" Height="660" MinWidth="690" MinHeight="500"
+    Title="{local:UiText '商店应用', 'Store apps'}" Width="920" Height="565" MinWidth="690" MinHeight="450"
     WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Loaded="OnLoaded" Closing="OnClosing">
-    <Grid Margin="25,21,25,19">
+    <Grid Margin="18,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -14,13 +14,10 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Margin="0,0,0,15">
-            <TextBlock Text="{local:UiText '商店应用', 'Store apps'}" FontSize="28" FontWeight="SemiBold"/>
-            <TextBlock Text="{local:UiText '当前账户的 Windows 应用包', 'Windows app packages for the current account'}"
-                       Style="{StaticResource MutedText}" Margin="0,5,0,0"/>
-        </StackPanel>
+        <TextBlock Text="{local:UiText '当前账户的 Windows 应用包', 'Windows app packages for the current account'}"
+                   Style="{StaticResource MutedText}" Margin="0,0,0,8"/>
 
-        <Grid Grid.Row="1" Margin="0,0,0,11">
+        <Grid Grid.Row="1" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -68,10 +65,10 @@
             </Grid>
         </Border>
 
-        <TextBox x:Name="StoreFullName" Grid.Row="3" Margin="0,9,0,0" Visibility="Collapsed" IsReadOnly="True"
+        <TextBox x:Name="StoreFullName" Grid.Row="3" Margin="0,7,0,0" Visibility="Collapsed" IsReadOnly="True"
                  IsReadOnlyCaretVisible="True" AutomationProperties.Name="{local:UiText '应用包完整标识', 'Package full name'}"/>
 
-        <Grid Grid.Row="4" Margin="0,14,0,0">
+        <Grid Grid.Row="4" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>

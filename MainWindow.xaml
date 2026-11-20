@@ -3,37 +3,37 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:DeepUninstaller"
     Style="{StaticResource DarkWindowStyle}"
-    Title="UninstallTrace" Width="1230" Height="755" MinWidth="1000" MinHeight="630"
+    Title="UninstallTrace" Width="1100" Height="680" MinWidth="940" MinHeight="560"
     WindowStartupLocation="CenterScreen" Loaded="OnLoaded" Closing="OnClosing" PreviewKeyDown="OnPreviewKeyDown">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="216"/>
+            <ColumnDefinition Width="181"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <Border Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-            <DockPanel Margin="17,23,16,17" LastChildFill="False">
+            <DockPanel Margin="12,15,12,11" LastChildFill="False">
                 <StackPanel DockPanel.Dock="Top">
-                    <StackPanel Orientation="Horizontal" Margin="3,5,0,30">
-                        <Border Background="{StaticResource AccentBrush}" CornerRadius="10" Width="38" Height="38">
-                            <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource AccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Margin="3,1,0,16">
+                        <Border Background="{StaticResource AccentBrush}" CornerRadius="7" Width="29" Height="29">
+                            <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource AccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="UninstallTrace" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        <TextBlock Text="UninstallTrace" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </StackPanel>
-                    <Button x:Name="AppsNav" Style="{StaticResource NavButton}" Click="ShowApps" Margin="0,0,0,7"
+                    <Button x:Name="AppsNav" Style="{StaticResource NavButton}" Click="ShowApps" Margin="0,0,0,4"
                             AutomationProperties.Name="{local:UiText '已安装程序', 'Installed apps'}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE8F1;" FontFamily="Segoe MDL2 Assets" Width="24" VerticalAlignment="Center"/>
                             <TextBlock Text="{local:UiText '已安装程序', 'Installed apps'}"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="AttemptsNav" Style="{StaticResource NavButton}" Click="ShowAttempts" Margin="0,0,0,7"
+                    <Button x:Name="AttemptsNav" Style="{StaticResource NavButton}" Click="ShowAttempts" Margin="0,0,0,4"
                             AutomationProperties.Name="{local:UiText '卸载记录', 'Uninstall history'}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE7C3;" FontFamily="Segoe MDL2 Assets" Width="24" VerticalAlignment="Center"/>
                             <TextBlock Text="{local:UiText '卸载记录', 'Uninstall history'}"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="HistoryNav" Style="{StaticResource NavButton}" Click="ShowHistory" Margin="0,0,0,7"
+                    <Button x:Name="HistoryNav" Style="{StaticResource NavButton}" Click="ShowHistory" Margin="0,0,0,4"
                             AutomationProperties.Name="{local:UiText '恢复历史', 'Recovery history'}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE81A;" FontFamily="Segoe MDL2 Assets" Width="24" VerticalAlignment="Center"/>
@@ -48,12 +48,10 @@
                         </StackPanel>
                     </Button>
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Bottom" Margin="9,0,0,5">
-                    <TextBlock x:Name="AccountText" Style="{StaticResource MutedText}" FontSize="12" Margin="0,6,0,0"/>
-                </StackPanel>
+                <TextBlock x:Name="AccountText" DockPanel.Dock="Bottom" Style="{StaticResource MutedText}" FontSize="12" Margin="7,0,0,3"/>
             </DockPanel>
         </Border>
-        <Grid Grid.Column="1" Margin="28,24,28,15">
+        <Grid Grid.Column="1" Margin="17,14,17,9">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -62,14 +60,9 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Margin="0,3,0,20">
-                    <TextBlock Text="{local:UiText '已安装程序', 'Installed apps'}" FontSize="30" FontWeight="SemiBold"/>
-                    <TextBlock Text="{local:UiText '运行程序自带的卸载工具，再检查文件和注册表残留。', 'Run the original uninstaller, then review files and registry leftovers.'}" Style="{StaticResource MutedText}" Margin="0,6,0,0"/>
-                </StackPanel>
-                <Grid Grid.Row="1" Margin="0,0,0,13">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -90,11 +83,11 @@
                                 </Style>
                             </Border.Style>
                         </Border>
-                        <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource MutedBrush}" Margin="13,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
-                        <TextBox x:Name="SearchInput" Margin="29,1,1,1" MinHeight="36" Background="Transparent" BorderThickness="0" TextChanged="OnFilterChanged"
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource MutedBrush}" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                        <TextBox x:Name="SearchInput" Margin="26,1,1,1" MinHeight="30" Padding="7,3" Background="Transparent" BorderThickness="0" TextChanged="OnFilterChanged"
                                  ToolTip="{local:UiText '搜索程序（Ctrl+F）', 'Search apps (Ctrl+F)'}"
                                  AutomationProperties.Name="{local:UiText '搜索程序、发布者或版本', 'Search apps, publishers, or versions'}"/>
-                        <TextBlock Text="{local:UiText '搜索程序、发布者或版本', 'Search apps, publishers, or versions'}" Margin="41,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock Text="{local:UiText '搜索程序、发布者或版本', 'Search apps, publishers, or versions'}" Margin="33,0,8,0" VerticalAlignment="Center" IsHitTestVisible="False" TextTrimming="CharacterEllipsis">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -107,37 +100,33 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Grid>
-                    <CheckBox x:Name="IncludeProtected" Grid.Column="1" Content="{local:UiText '显示系统和受保护项', 'Show system and protected apps'}" Margin="17,0" Checked="OnFilterChanged" Unchecked="OnFilterChanged"/>
+                    <CheckBox x:Name="IncludeProtected" Grid.Column="1" Content="{local:UiText '显示系统和受保护项', 'Show system and protected apps'}" Margin="12,0" Checked="OnFilterChanged" Unchecked="OnFilterChanged"/>
                     <Button x:Name="RefreshButton" Grid.Column="2" Content="{local:UiText '刷新', 'Refresh'}" Click="OnRefresh"
                             ToolTip="{local:UiText '刷新程序列表（F5）', 'Refresh installed apps (F5)'}"/>
                 </Grid>
-                <WrapPanel Grid.Row="2" Margin="0,0,0,13">
-                    <Button x:Name="BatchButton" Content="{local:UiText '批量卸载', 'Batch uninstall'}" Click="OnBatchUninstall"
-                            Margin="0,0,8,0" IsEnabled="False"
-                            ToolTip="{local:UiText '选择多个程序，按顺序运行原厂卸载', 'Select multiple apps and run their original uninstallers in order'}"/>
-                    <Button x:Name="OrphanButton" Content="{local:UiText '扫描已移除程序', 'Scan removed app'}" Click="OnOrphanScan" IsEnabled="False"
-                            Margin="0,0,8,0"
-                            ToolTip="{local:UiText '从已知程序名称与安装位置查找残留', 'Look for leftovers using a known app name and install location'}"/>
-                    <Button x:Name="StoreButton" Content="{local:UiText 'Windows 应用', 'Windows apps'}" Click="OnStoreApps" IsEnabled="False"
-                            ToolTip="{local:UiText '管理当前用户安装的打包应用', 'Manage packaged apps installed for the current user'}"/>
-                </WrapPanel>
-                <Grid Grid.Row="3">
+                <DockPanel Grid.Row="1" Margin="0,0,0,8">
+                    <TextBlock x:Name="InventoryCount" DockPanel.Dock="Right" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <WrapPanel>
+                        <Button x:Name="BatchButton" Content="{local:UiText '批量卸载', 'Batch uninstall'}" Click="OnBatchUninstall"
+                                Margin="0,0,6,0" IsEnabled="False"
+                                ToolTip="{local:UiText '选择多个程序，按顺序运行原厂卸载', 'Select multiple apps and run their original uninstallers in order'}"/>
+                        <Button x:Name="OrphanButton" Content="{local:UiText '扫描已移除程序', 'Scan removed app'}" Click="OnOrphanScan" IsEnabled="False"
+                                Margin="0,0,6,0"
+                                ToolTip="{local:UiText '从已知程序名称与安装位置查找残留', 'Look for leftovers using a known app name and install location'}"/>
+                        <Button x:Name="StoreButton" Content="{local:UiText 'Windows 应用', 'Windows apps'}" Click="OnStoreApps" IsEnabled="False"
+                                ToolTip="{local:UiText '管理当前用户安装的打包应用', 'Manage packaged apps installed for the current user'}"/>
+                    </WrapPanel>
+                </DockPanel>
+                <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="16"/>
-                        <ColumnDefinition Width="280"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="244"/>
                     </Grid.ColumnDefinitions>
                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <DockPanel Margin="14,12" LastChildFill="True">
-                                <TextBlock x:Name="InventoryCount" DockPanel.Dock="Right" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center"/>
-                                <TextBlock Text="{local:UiText '程序列表', 'Applications'}" FontWeight="SemiBold"/>
-                            </DockPanel>
-                            <DataGrid x:Name="AppGrid" Grid.Row="1" Margin="0,0,0,6" IsReadOnly="True" SelectionChanged="OnAppSelected">
+                            <DataGrid x:Name="AppGrid" Margin="1,1,1,4" IsReadOnly="True" SelectionChanged="OnAppSelected"
+                                      AutomationProperties.Name="{local:UiText '已安装程序', 'Installed apps'}">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Name}" Width="2.3*" MinWidth="128" ElementStyle="{StaticResource CellText}"/>
                                     <DataGridTextColumn Header="{local:UiText '发布者', 'Publisher'}" Binding="{Binding Publisher}" Width="1.25*" MinWidth="85" ElementStyle="{StaticResource CellText}"/>
@@ -145,30 +134,27 @@
                                     <DataGridTextColumn Header="{local:UiText '大小', 'Size'}" Binding="{Binding Size}" Width="83" SortMemberPath="App.EstimatedSizeBytes" ElementStyle="{StaticResource CellText}"/>
                                 </DataGrid.Columns>
                             </DataGrid>
-                            <TextBlock x:Name="InventoryEmpty" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource MutedText}"/>
+                            <TextBlock x:Name="InventoryEmpty" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource MutedText}"/>
                         </Grid>
                     </Border>
-                    <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="17" CornerRadius="10">
+                    <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="12" CornerRadius="10">
                         <DockPanel>
-                            <StackPanel DockPanel.Dock="Bottom" Margin="0,17,0,0">
-                                <Button x:Name="UninstallButton" Content="{local:UiText '运行卸载', 'Run uninstaller'}" Style="{StaticResource PrimaryButton}" Click="OnUninstall" Margin="0,0,0,8" IsEnabled="False"/>
+                            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                                <Button x:Name="UninstallButton" Content="{local:UiText '运行卸载', 'Run uninstaller'}" Style="{StaticResource PrimaryButton}" Click="OnUninstall" Margin="0,0,0,6" IsEnabled="False"/>
                                 <Button x:Name="ScanButton" Content="{local:UiText '扫描残留', 'Scan for leftovers'}" Click="OnScan" IsEnabled="False"/>
                             </StackPanel>
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <Border Background="{StaticResource AccentBackgroundBrush}" CornerRadius="10" Width="45" Height="45" HorizontalAlignment="Left" Margin="0,1,0,13">
-                                        <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource AccentBrush}" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock x:Name="AppName" Text="{local:UiText '选择一个程序', 'Select an app'}" TextWrapping="Wrap" FontSize="20" FontWeight="SemiBold"/>
-                                    <TextBlock x:Name="AppPublisher" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                    <TextBlock x:Name="AppName" Text="{local:UiText '选择一个程序', 'Select an app'}" TextWrapping="Wrap" FontSize="16" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="AppPublisher" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,3,0,0"/>
                                     <StackPanel x:Name="AppDetails" Visibility="Collapsed">
-                                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Margin="0,14,0,14"/>
+                                        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Margin="0,9,0,9"/>
                                         <TextBlock Text="{local:UiText '安装信息', 'Installation details'}" Style="{StaticResource MutedText}" FontSize="12"/>
-                                        <TextBlock x:Name="AppScope" TextWrapping="Wrap" Margin="0,4,0,12"/>
+                                        <TextBlock x:Name="AppScope" TextWrapping="Wrap" Margin="0,2,0,8"/>
                                         <TextBlock Text="{local:UiText '安装位置', 'Install location'}" Style="{StaticResource MutedText}" FontSize="12"/>
-                                        <TextBlock x:Name="AppPath" TextWrapping="Wrap" Margin="0,4,0,12"/>
+                                        <TextBlock x:Name="AppPath" TextWrapping="Wrap" Margin="0,2,0,8"/>
                                         <TextBlock Text="{local:UiText '卸载命令', 'Uninstall command'}" Style="{StaticResource MutedText}" FontSize="12"/>
-                                        <TextBlock x:Name="AppCommand" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                        <TextBlock x:Name="AppCommand" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </StackPanel>
                             </ScrollViewer>
@@ -179,20 +165,16 @@
             <Grid x:Name="AttemptsView" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Margin="0,3,0,18">
-                    <TextBlock Text="{local:UiText '卸载记录', 'Uninstall history'}" FontSize="30" FontWeight="SemiBold"/>
-                    <TextBlock Text="{local:UiText '查看原厂卸载结果，重启后或稍晚继续扫描残留。', 'Review uninstall results and resume leftover scanning later or after a restart.'}" Style="{StaticResource MutedText}" Margin="0,6,0,0"/>
-                </StackPanel>
-                <WrapPanel Grid.Row="1" Margin="0,0,0,13">
-                    <Button x:Name="ResumeScanButton" Content="{local:UiText '继续扫描残留', 'Resume leftover scan'}" Style="{StaticResource PrimaryButton}" Click="OnResumeScan" IsEnabled="False" Margin="0,0,8,0"/>
+                <WrapPanel Margin="0,0,0,8">
+                    <Button x:Name="ResumeScanButton" Content="{local:UiText '继续扫描残留', 'Resume leftover scan'}" Style="{StaticResource PrimaryButton}" Click="OnResumeScan" IsEnabled="False" Margin="0,0,6,0"/>
                     <Button Content="{local:UiText '刷新记录', 'Refresh log'}" Click="OnAttemptsRefresh"/>
                 </WrapPanel>
-                <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
+                <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
                     <Grid>
-                        <DataGrid x:Name="AttemptsGrid" Margin="0,1,0,7" IsReadOnly="True" SelectionChanged="OnAttemptSelected">
+                        <DataGrid x:Name="AttemptsGrid" Margin="1,1,1,4" IsReadOnly="True" SelectionChanged="OnAttemptSelected"
+                                  AutomationProperties.Name="{local:UiText '卸载记录', 'Uninstall history'}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Attempt.App.Name}" Width="*" ElementStyle="{StaticResource CellText}"/>
                                 <DataGridTextColumn Header="{local:UiText '开始时间', 'Started'}" Binding="{Binding Time}" Width="158" SortMemberPath="Attempt.StartedAt" ElementStyle="{StaticResource CellText}"/>
@@ -207,27 +189,23 @@
             <Grid x:Name="HistoryView" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <StackPanel Margin="0,3,0,18">
-                    <TextBlock Text="{local:UiText '恢复历史', 'Recovery history'}" FontSize="30" FontWeight="SemiBold"/>
-                    <TextBlock Text="{local:UiText '查看每次清理的结果，恢复隔离的文件和注册表数据。', 'Review cleanup results and restore quarantined files and registry data.'}" Style="{StaticResource MutedText}" Margin="0,6,0,0"/>
-                </StackPanel>
-                <WrapPanel Grid.Row="1" Margin="0,0,0,13">
-                    <Button x:Name="RestoreButton" Content="{local:UiText '恢复该次清理', 'Restore cleanup'}" Style="{StaticResource PrimaryButton}" Click="OnRestore" IsEnabled="False" Margin="0,0,8,0"/>
-                    <Button x:Name="DiscardButton" Content="{local:UiText '永久删除恢复副本', 'Permanently delete recovery copies'}" Click="OnDiscard" IsEnabled="False" Margin="0,0,8,0"/>
+                <WrapPanel Margin="0,0,0,8">
+                    <Button x:Name="RestoreButton" Content="{local:UiText '恢复该次清理', 'Restore cleanup'}" Style="{StaticResource PrimaryButton}" Click="OnRestore" IsEnabled="False" Margin="0,0,6,0"/>
+                    <Button x:Name="DiscardButton" Content="{local:UiText '永久删除恢复副本', 'Permanently delete recovery copies'}" Click="OnDiscard" IsEnabled="False" Margin="0,0,6,0"/>
                     <Button Content="{local:UiText '刷新历史', 'Refresh history'}" Click="OnHistoryRefresh"/>
                 </WrapPanel>
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="2*" MinHeight="100"/>
-                        <RowDefinition Height="9"/>
+                        <RowDefinition Height="7"/>
                         <RowDefinition Height="3*" MinHeight="100"/>
                     </Grid.RowDefinitions>
                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
                         <Grid>
-                            <DataGrid x:Name="HistoryGrid" Margin="0,1,0,7" IsReadOnly="True" SelectionChanged="OnSessionSelected">
+                            <DataGrid x:Name="HistoryGrid" Margin="1,1,1,4" IsReadOnly="True" SelectionChanged="OnSessionSelected"
+                                      AutomationProperties.Name="{local:UiText '恢复历史', 'Recovery history'}">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Session.AppName}" Width="*" ElementStyle="{StaticResource CellText}"/>
                                     <DataGridTextColumn Header="{local:UiText '清理时间', 'Cleaned'}" Binding="{Binding Time}" Width="165" SortMemberPath="Session.CreatedAt" ElementStyle="{StaticResource CellText}"/>
@@ -240,7 +218,8 @@
                         </Grid>
                     </Border>
                     <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
-                        <DataGrid x:Name="EntryGrid" Margin="0,1,0,7" IsReadOnly="True">
+                        <DataGrid x:Name="EntryGrid" Margin="1,1,1,4" IsReadOnly="True"
+                                  AutomationProperties.Name="{local:UiText '所选清理的处理结果', 'Results for the selected cleanup'}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="{local:UiText '状态', 'Status'}" Binding="{Binding State}" Width="104" ElementStyle="{StaticResource CellText}"/>
                                 <DataGridTextColumn Header="{local:UiText '项目', 'Item'}" Binding="{Binding Target}" Width="2*" ElementStyle="{StaticResource CellText}"/>
@@ -251,37 +230,34 @@
                 </Grid>
             </Grid>
             <Grid x:Name="SettingsView" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <TextBlock Text="{local:UiText '设置', 'Settings'}" FontSize="30" FontWeight="SemiBold" Margin="0,3,0,20"/>
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel MaxWidth="650" HorizontalAlignment="Left">
-                        <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="19">
+                        <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
                             <StackPanel>
-                                <TextBlock Text="{local:UiText '界面语言', 'Display language'}" FontSize="18" FontWeight="SemiBold"/>
-                                <RadioButton x:Name="SystemLanguage" GroupName="DisplayLanguage" Content="{local:UiText '跟随 Windows', 'Use Windows language'}"
-                                             Checked="OnLanguageChoiceChanged" Margin="0,14,0,0"/>
-                                <RadioButton x:Name="ChineseLanguage" GroupName="DisplayLanguage" Content="简体中文" Checked="OnLanguageChoiceChanged" Margin="0,9,0,0"/>
-                                <RadioButton x:Name="EnglishLanguage" GroupName="DisplayLanguage" Content="English" Checked="OnLanguageChoiceChanged" Margin="0,9,0,0"/>
+                                <TextBlock Text="{local:UiText '界面语言', 'Display language'}" FontSize="15" FontWeight="SemiBold"/>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <RadioButton x:Name="SystemLanguage" GroupName="DisplayLanguage" Content="{local:UiText '跟随 Windows', 'Use Windows language'}"
+                                                 Checked="OnLanguageChoiceChanged" Margin="0,0,16,4"/>
+                                    <RadioButton x:Name="ChineseLanguage" GroupName="DisplayLanguage" Content="简体中文" Checked="OnLanguageChoiceChanged" Margin="0,0,16,4"/>
+                                    <RadioButton x:Name="EnglishLanguage" GroupName="DisplayLanguage" Content="English" Checked="OnLanguageChoiceChanged" Margin="0,0,0,4"/>
+                                </WrapPanel>
                                 <Button x:Name="ApplyLanguageButton" Content="{local:UiText '应用语言', 'Apply language'}" Style="{StaticResource PrimaryButton}"
-                                        Click="OnApplyLanguage" IsEnabled="False" HorizontalAlignment="Left" Margin="0,17,0,0"/>
+                                        Click="OnApplyLanguage" IsEnabled="False" HorizontalAlignment="Left" Margin="0,5,0,0"/>
                             </StackPanel>
                         </Border>
-                        <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="19" Margin="0,13,0,0">
+                        <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,8,0,0">
                             <StackPanel>
-                                <TextBlock Text="{local:UiText '键盘快捷键', 'Keyboard shortcuts'}" FontSize="18" FontWeight="SemiBold"/>
-                                <TextBlock Text="{local:UiText 'Ctrl+F　搜索已安装程序', 'Ctrl+F   Search installed apps'}" Margin="0,12,0,0"/>
-                                <TextBlock Text="{local:UiText 'F5　刷新当前列表', 'F5   Refresh the current list'}" Margin="0,7,0,0"/>
-                                <TextBlock Text="{local:UiText '空格　勾选审查窗口中当前的残留项', 'Space   Toggle the selected leftover in the review window'}" Margin="0,7,0,0"/>
-                                <TextBlock Text="{local:UiText 'Esc　关闭审查窗口', 'Esc   Close the review window'}" Margin="0,7,0,0"/>
+                                <TextBlock Text="{local:UiText '键盘快捷键', 'Keyboard shortcuts'}" FontSize="15" FontWeight="SemiBold"/>
+                                <TextBlock Text="{local:UiText 'Ctrl+F　搜索已安装程序', 'Ctrl+F   Search installed apps'}" Margin="0,7,0,0"/>
+                                <TextBlock Text="{local:UiText 'F5　刷新当前列表', 'F5   Refresh the current list'}" Margin="0,4,0,0"/>
+                                <TextBlock Text="{local:UiText '空格　勾选审查窗口中当前的残留项', 'Space   Toggle the selected leftover in the review window'}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="{local:UiText 'Esc　关闭审查窗口', 'Esc   Close the review window'}" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
-            <DockPanel Grid.Row="1" Margin="1,11,1,0">
+            <DockPanel Grid.Row="1" Margin="1,7,1,0">
                 <Button x:Name="StopWaitButton" Content="{local:UiText '停止等待', 'Stop waiting'}" DockPanel.Dock="Right" Click="OnStopWait"
                         Visibility="Collapsed" MinHeight="25" Padding="7,2" FontSize="12" Margin="8,0,0,0"/>
                 <ProgressBar x:Name="BusyProgress" DockPanel.Dock="Right" IsIndeterminate="True" Width="95" Height="4" Visibility="Collapsed" Foreground="{StaticResource AccentBrush}"/>

@@ -14,7 +14,7 @@ public partial class BatchWindow : Window
     {
         rows = apps.Select(app => new BatchRow(app)).ToArray();
         InitializeComponent();
-        Title = Heading.Text = Localization.Text("批量卸载", "Batch uninstall");
+        Title = Localization.Text("批量卸载", "Batch uninstall");
         HelpText.Text = Localization.Text(
             "按清单顺序逐个运行原厂卸载。每个程序的残留都可独立审查，遇到取消、重启或结果不明时暂停。",
             "Run vendor uninstallers one at a time in list order. Review each program’s leftovers. The queue pauses on cancellation, a restart request, or an unconfirmed result.");
