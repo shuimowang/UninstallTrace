@@ -173,8 +173,8 @@ internal static class ScannerOwnershipVerification
             "The localized installer fixture needs fresh settings and non-existent startup executables.");
         Require(LeftoverScanner.TryValidateFileSystemTarget(installPath, out _),
             "The verification application needs to run from an unprotected local development directory.");
-        using var startup = Registry.CurrentUser.OpenSubKey(runPath, writable: true)
-            ?? throw new InvalidOperationException("The Windows current-user Run key must be available for this registry fixture.");
+        // Fresh Windows profiles can lack this standard key. Cleanup removes only our unique values.
+        using var startup = Registry.CurrentUser.CreateSubKey(runPath, writable: true);
         Require(startup.GetValue(runName) is null && startup.GetValue(siblingRunName) is null,
             "The startup fixture must only use new registry value names.");
 
