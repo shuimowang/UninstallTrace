@@ -77,8 +77,10 @@ public static partial class StoreApps
             $dates = @{}
             try {
                 $manager = [Windows.Management.Deployment.PackageManager,Windows.Management.Deployment,ContentType=WindowsRuntime]::new()
+                $packageTypes = [Windows.Management.Deployment.PackageTypes,Windows.Management.Deployment,ContentType=WindowsRuntime]
+                $appTypes = $packageTypes::Main -bor $packageTypes::Bundle
                 $epoch = [DateTimeOffset]::FromFileTime(0)
-                foreach ($registered in $manager.FindPackagesForUser('')) {
+                foreach ($registered in $manager.FindPackagesForUserWithPackageTypes('', $appTypes)) {
                     try {
                         $date = $registered.InstalledDate
                         if ($date -is [DateTimeOffset] -and $date -gt $epoch) {
