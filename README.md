@@ -11,6 +11,8 @@ UninstallTrace runs the original Windows uninstaller, checks what it left behind
 3. Choose **Run uninstaller** to start the original remover or **Scan for leftovers** to inspect a damaged or stale registration. Use **Scan removed app** for a program missing from the list.
 4. Check the location and evidence for the leftovers you want to quarantine. Open **Cleanup recovery** to restore the files and registry entries from a cleanup before discarding its backups. To use the removed program again, reinstall it with its installer or through the Store.
 
+If quarantine fails because an item is in use, **Cleanup recovery** checks its original location and the recovery copy. Restore and permanent deletion are unavailable for a missing copy. Close the program using the file and run a fresh scan from the record. For older records, use **View uninstall history → Resume leftover scan**.
+
 The language setting supports English, Simplified Chinese, and automatic selection from Windows. **Batch uninstall** runs vendor removers sequentially, reviews leftovers per program, and pauses when a result needs attention. **Uninstall history** lets you resume a scan later or after a restart.
 
 Desktop install dates come from uninstall registrations. Some installers omit the date. Applying an MSI patch or performing a repair can update it. Store apps use the package installation or last update date reported by Windows. [Microsoft's MSI date documentation](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)
@@ -29,7 +31,7 @@ Name matches alone require a manual selection. The recovery vault covers the fil
 
 Use the .NET 10 SDK on Windows. The integration harness uses temporary files and current-user registry fixtures to test scanning, ownership checks, quarantine, and restoration.
 
-The [real Windows uninstall checks](.github/workflows/real-apps.yml) use separate disposable Windows machines for SumatraPDF and WinMerge. They compare the scanner with v0.1.3 on the same post-uninstall state and verify quarantine and restoration against known files, registry data, and shared-folder controls. [Method and results](docs/uninstall-verification.md)
+The [real Windows uninstall checks](.github/workflows/real-apps.yml) use separate disposable Windows machines for Ghost Downloader, SumatraPDF and WinMerge. They compare two scanners on the same post-uninstall state and verify quarantine and restoration against known files, registry data and shared-folder controls. [Method and results](docs/uninstall-verification.md)
 
 For paired scan times and the C#/Rust Windows API experiment, see [scanner performance](docs/scanner-performance.md).
 

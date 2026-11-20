@@ -432,8 +432,11 @@ public partial class MainWindow : Window
             var session = await Task.Run(() => recovery.Clean(app, review.SelectedItems, registrationConfirmedGone));
             SetView(MainView.Recovery);
             await RefreshHistory(session.Id);
-            SetStatus(Text($"已隔离 {session.Entries.Count(entry => entry.State == CleanupState.Quarantined)} 项，", $"Quarantined {session.Entries.Count(entry => entry.State == CleanupState.Quarantined)} items. ")
-                + Text($"待核对 {session.Entries.Count(entry => entry.State is CleanupState.Failed or CleanupState.Skipped)} 项。", $"{session.Entries.Count(entry => entry.State is CleanupState.Failed or CleanupState.Skipped)} need review."));
+            var totals = new SessionRow(session);
+            var inPlace = session.Entries.Count(entry => entry.State == CleanupState.OriginalInPlace);
+            SetStatus(Text($"已隔离 {totals.Quarantined} 项，待核对 {totals.Failed} 项。",
+                    $"Quarantined {totals.Quarantined} items. {totals.Failed} need review.")
+                + (inPlace == 0 ? "" : Text($"有 {inPlace} 项仍在原位置。", $" {inPlace} remain at their original paths.")));
             apps = await Task.Run(InstalledApps.Read);
             ApplyFilter();
             return;
@@ -517,15 +520,71 @@ public partial class MainWindow : Window
     private void UpdateHistoryButtons()
     {
         var row = HistoryGrid.SelectedItem as SessionRow;
-        var available = !busy && row?.Session.Entries.Any(entry =>
-            entry.State is CleanupState.Pending or CleanupState.Quarantined or CleanupState.Failed) == true;
-        RestoreButton.IsEnabled = available;
-        DiscardButton.IsEnabled = available || !busy && row?.Session.Entries.Any(entry => entry.State == CleanupState.DiscardInProgress) == true;
+        RestoreButton.IsEnabled = !busy && row?.CanRestore == true;
+        DiscardButton.IsEnabled = !busy && row?.CanDiscard == true;
+        RecoveryRescanButton.Visibility = row?.CanRescan == true ? Visibility.Visible : Visibility.Collapsed;
+        RecoveryRescanButton.Content = row?.Session.App is null
+            ? Text("查看卸载记录", "View uninstall history") : Text("重新扫描残留", "Scan leftovers again");
+        RecoveryRescanButton.IsEnabled = !busy;
+    }
+
+    private async void OnRecoveryRescan(object sender, RoutedEventArgs e)
+    {
+        if (HistoryGrid.SelectedItem is not SessionRow { CanRescan: true } row)
+            return;
+
+        await RunBusy(async () =>
+        {
+            if (row.Session.App is not { IsProtected: false } saved || string.IsNullOrWhiteSpace(saved.RegistryPath))
+            {
+                await OpenMatchingUninstallAttempts(row.Session.AppName);
+                return;
+            }
+
+            var unchanged = await Task.Run(() =>
+            {
+                var live = InstalledApps.Read().FirstOrDefault(candidate =>
+                    string.Equals(candidate.Id, saved.Id, StringComparison.OrdinalIgnoreCase));
+                return live is null ? !InstalledApps.IsRegistered(saved) : live == saved;
+            });
+            if (!unchanged)
+            {
+                SetStatus(Text("程序登记已变化，请从当前程序清单重新扫描。",
+                    "The app registration has changed. Start a fresh scan from the current app list."));
+                return;
+            }
+
+            await ScanAndReview(saved, Text("重新核对残留归属。请审查本次结果，再选择要隔离的项目。",
+                "Checking ownership again. Review the new results before selecting items to quarantine."));
+        });
+    }
+
+    private async Task OpenMatchingUninstallAttempts(string appName)
+    {
+        SetView(MainView.Attempts);
+        await RefreshAttempts();
+        var diagnostics = StatusText.ToolTip;
+        var matches = (AttemptsGrid.ItemsSource as IEnumerable<AttemptRow> ?? [])
+            .Where(row => string.Equals(row.Attempt.App.Name, appName, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var match = matches.Length == 1 ? matches[0] : null;
+        AttemptsGrid.SelectedItem = match;
+        if (match is not null)
+            AttemptsGrid.ScrollIntoView(match);
+        SetStatus(matches.Length switch
+        {
+            0 => Text($"未找到「{appName}」的卸载记录。可从已安装程序页使用「扫描已移除程序」。",
+                $"No uninstall attempt was found for {appName}. Use Scan removed app from the installed-apps page."),
+            1 => Text($"已定位「{appName}」的卸载记录。核对后点「继续扫描残留」。",
+                $"Found the uninstall attempt for {appName}. Check it and choose Resume leftover scan."),
+            _ => Text($"「{appName}」有多条卸载记录。请选择对应的一条再继续扫描。",
+                $"There are multiple uninstall attempts for {appName}. Choose the corresponding attempt to resume scanning."),
+        });
+        StatusText.ToolTip = diagnostics;
     }
 
     private async void OnRestore(object sender, RoutedEventArgs e)
     {
-        if (HistoryGrid.SelectedItem is not SessionRow row ||
+        if (HistoryGrid.SelectedItem is not SessionRow { CanRestore: true } row ||
             UiPrompt.Show(this, Text($"恢复「{row.Session.AppName}」在本次清理中移走的项目？原位置有新内容时，该项目会继续保留在隔离区。", $"Restore items quarantined for {row.Session.AppName}? Items stay in quarantine if their original location is occupied."),
                 Text("确认恢复", "Confirm restore"), MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel) != MessageBoxResult.OK)
             return;
@@ -542,7 +601,7 @@ public partial class MainWindow : Window
 
     private async void OnDiscard(object sender, RoutedEventArgs e)
     {
-        if (HistoryGrid.SelectedItem is not SessionRow row ||
+        if (HistoryGrid.SelectedItem is not SessionRow { CanDiscard: true } row ||
             UiPrompt.Show(this, Text($"永久删除「{row.Session.AppName}」在本次清理中保存的恢复副本？删除后无法通过本历史记录还原这些副本。", $"Permanently delete the recovery copies for {row.Session.AppName}? You will lose the ability to restore them from this history."),
                 Text("确认永久删除", "Confirm permanent deletion"), MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel) != MessageBoxResult.OK)
             return;
@@ -615,9 +674,15 @@ public partial class MainWindow : Window
     private sealed record SessionRow(CleanupSession Session)
     {
         public string Time => Session.CreatedAt.LocalDateTime.ToString("g", Culture);
-        public int Quarantined => Session.Entries.Count(entry => entry.State == CleanupState.Quarantined);
+        public int Quarantined => Session.Entries.Count(entry => entry.State == CleanupState.Quarantined && entry.CopyStatus == RecoveryCopyStatus.Available);
         public int Restored => Session.Entries.Count(entry => entry.State == CleanupState.Restored);
-        public int Failed => Session.Entries.Count(entry => entry.State is CleanupState.Pending or CleanupState.Failed or CleanupState.Skipped or CleanupState.DiscardInProgress);
+        public int Failed => Session.Entries.Count(entry =>
+            entry.State is CleanupState.Pending or CleanupState.Failed or CleanupState.Skipped or CleanupState.DiscardInProgress or CleanupState.OriginalInPlace
+            || entry.State == CleanupState.Quarantined && entry.CopyStatus != RecoveryCopyStatus.Available);
+        public bool CanRestore => Session.Entries.Any(entry => entry.CanRestore);
+        public bool CanDiscard => Session.Entries.Any(entry => entry.CanDiscard);
+        public bool CanRescan => Session.Entries.Any(entry => entry.State == CleanupState.OriginalInPlace ||
+            entry.State is CleanupState.Failed or CleanupState.Pending && entry.CopyStatus == RecoveryCopyStatus.Missing && entry.OriginalPathPresent);
     }
 
     private sealed record AttemptRow(UninstallAttempt Attempt)
@@ -638,8 +703,25 @@ public partial class MainWindow : Window
     private sealed record EntryRow(CleanupEntry Entry)
     {
         public string Target => ReviewWindow.DescribeTarget(Entry.Item);
+        public string Details
+        {
+            get
+            {
+                var observation = Entry.State is CleanupState.Failed or CleanupState.Pending &&
+                    Entry.CopyStatus == RecoveryCopyStatus.Missing && Entry.OriginalPathPresent
+                    ? Text("原位置当前有项目，未发现隔离副本。", "An item is currently at the original path. No recovery copy was found.") : null;
+                return string.Join(" ", new[] { observation, Entry.DisplayNote, Entry.CopyCheckError }
+                    .Where(note => !string.IsNullOrWhiteSpace(note)));
+            }
+        }
         public string State => Entry.State switch
         {
+            CleanupState.OriginalInPlace when Entry.OriginalPathPresent => Text("仍在原位置", "Original in place"),
+            CleanupState.OriginalInPlace => Text("未隔离", "Not quarantined"),
+            CleanupState.Failed or CleanupState.Pending when Entry.CopyStatus == RecoveryCopyStatus.Missing && Entry.OriginalPathPresent
+                => Text("原位置有项目", "Item at original path"),
+            CleanupState.Pending or CleanupState.Quarantined or CleanupState.Failed or CleanupState.DiscardInProgress
+                when Entry.CopyStatus == RecoveryCopyStatus.Missing => Text("无隔离副本", "No recovery copy"),
             CleanupState.Pending => Text("待重新核对", "Pending review"),
             CleanupState.Quarantined => Text("已隔离", "Quarantined"),
             CleanupState.Restored => Text("已恢复", "Restored"),

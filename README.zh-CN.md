@@ -11,6 +11,8 @@ UninstallTrace 先运行软件自带的卸载程序，再检查遗留文件和�
 3. 选 **运行卸载** 启动原厂卸载，或选 **扫描残留** 检查有问题的卸载登记。程序已经从列表消失时，可以用 **扫描已移除程序**。
 4. 核对每项的位置和依据，再勾选需要隔离的内容。要撤销一次残留清理，可从 **清理恢复** 还原该次隔离的文件和注册表项。要重新使用已卸载的软件，请用原安装包或商店重新安装。
 
+如果文件被占用，**清理恢复** 会核对原路径和隔离位置。确认没有副本时，恢复和永久删除副本按钮会禁用。关闭占用文件的程序后，可以从该记录重新扫描。较早的记录使用 **查看卸载记录 → 继续扫描残留**，让你再次审查当前的候选项。
+
 语言设置支持简体中文、英语和跟随 Windows。**批量卸载** 逐个运行原厂卸载程序，每个程序单独审查残留，结果需要确认时暂停。**卸载记录** 可以在稍后或重启后继续扫描。
 
 桌面程序的日期来自卸载登记。部分安装程序省略此字段，MSI 的补丁或修复也可能更新它。商店应用使用 Windows 记录的包安装或上次更新日期。[Microsoft 关于 MSI 安装日期的说明](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)
@@ -29,7 +31,7 @@ UninstallTrace 先运行软件自带的卸载程序，再检查遗留文件和�
 
 在 Windows 上安装 .NET 10 SDK。集成验证使用临时文件和当前用户注册表中的模拟数据。
 
-[真实卸载验证](.github/workflows/real-apps.yml) 在两台一次性 Windows 虚拟机上分别安装 SumatraPDF 和 WinMerge。在相同的原厂卸载结果上对照 v0.1.3 与当前扫描器，并检查隔离、恢复和共享目录保护。[验证方法与结果](docs/uninstall-verification.md)
+[真实卸载验证](.github/workflows/real-apps.yml) 分别在一次性 Windows 虚拟机上安装 Ghost Downloader、SumatraPDF 和 WinMerge。每组使用相同的原厂卸载结果比较新旧扫描器，并检查隔离、恢复和共享目录保护。[验证方法与结果](docs/uninstall-verification.md)
 
 桌面残留扫描耗时和 C#、Rust 的 Windows API 对照结果见[性能实测](docs/scanner-performance.md)。
 

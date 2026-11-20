@@ -11,7 +11,9 @@ using Microsoft.Win32.SafeHandles;
 
 namespace DeepUninstaller.Services;
 
-public enum CleanupState { Pending, Quarantined, Restored, Skipped, Failed, Discarded, DiscardInProgress }
+public enum CleanupState { Pending, Quarantined, Restored, Skipped, Failed, Discarded, DiscardInProgress, OriginalInPlace }
+
+public enum RecoveryCopyStatus { Unverified, Missing, Available }
 
 public sealed record RecoveryNote(string Chinese, string English)
 {
@@ -35,12 +37,26 @@ public sealed class CleanupEntry
     [JsonIgnore]
     public string? DisplayNote => LocalizedNote?.Text ?? Note;
     public RegistryTree? RegistryBackup { get; set; }
+
+    [JsonIgnore]
+    public RecoveryCopyStatus CopyStatus { get; internal set; }
+    [JsonIgnore]
+    public bool OriginalPathPresent { get; internal set; }
+    [JsonIgnore]
+    public string? CopyCheckError { get; internal set; }
+    [JsonIgnore]
+    public bool CanRestore => CopyStatus == RecoveryCopyStatus.Available &&
+        State is CleanupState.Pending or CleanupState.Quarantined or CleanupState.Failed;
+    [JsonIgnore]
+    public bool CanDiscard => CanRestore || CopyStatus == RecoveryCopyStatus.Available && State == CleanupState.DiscardInProgress;
 }
 
 public sealed class CleanupSession
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public required string AppName { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public InstalledApp? App { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
     public required List<CleanupEntry> Entries { get; init; }
 }
@@ -139,6 +155,7 @@ public sealed class RecoveryService
         var session = new CleanupSession
         {
             AppName = app.Name,
+            App = string.IsNullOrWhiteSpace(app.RegistryPath) ? null : app,
             Entries = requested.Select(item => new CleanupEntry
             {
                 Item = current.FirstOrDefault(candidate => ItemMatches(item, candidate)) ?? item
@@ -164,7 +181,7 @@ public sealed class RecoveryService
                     throw new RecoveryIOException("程序重新登记了卸载信息，已停止清理该项。",
                         "Cleanup stopped for this item because the app registered an uninstall entry again.");
                 if (IsRegistration(entry.Item, app) && session.Entries.Any(other =>
-                        other != entry && other.State is CleanupState.Failed or CleanupState.Skipped))
+                        other != entry && other.State is CleanupState.Failed or CleanupState.Skipped or CleanupState.OriginalInPlace))
                     throw new RecoveryIOException("存在未清理的选中项，本次保留卸载登记，便于重试。",
                         "The uninstall entry was kept so you can retry cleanup for the selected items that remain.");
                 Quarantine(session, entry);
@@ -179,7 +196,7 @@ public sealed class RecoveryService
         var session = Load(id);
         foreach (var entry in session.Entries.AsEnumerable().Reverse())
         {
-            if (entry.State is CleanupState.Restored or CleanupState.Skipped or CleanupState.Discarded or CleanupState.DiscardInProgress)
+            if (!entry.CanRestore)
                 continue;
             ExecuteEntry(session, entry, () => RestoreEntry(session, entry), CleanupState.Restored);
         }
@@ -192,7 +209,7 @@ public sealed class RecoveryService
         var session = Load(id);
         foreach (var entry in session.Entries)
         {
-            if (entry.State is CleanupState.Restored or CleanupState.Skipped or CleanupState.Discarded)
+            if (!entry.CanDiscard && !(entry.State == CleanupState.DiscardInProgress && entry.CopyStatus == RecoveryCopyStatus.Missing))
                 continue;
             ExecuteEntry(session, entry, () =>
             {
@@ -230,15 +247,15 @@ public sealed class RecoveryService
             entry.Note = null;
             entry.LocalizedNote = null;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-            or System.Security.SecurityException or InvalidOperationException or ArgumentException)
+        catch (Exception exception) when (IsEntryFailure(exception))
         {
-            if (entry.State != CleanupState.DiscardInProgress)
+            if (entry.State is not (CleanupState.DiscardInProgress or CleanupState.OriginalInPlace))
                 entry.State = CleanupState.Failed;
             entry.Note = exception.Message;
             entry.LocalizedNote = (exception as RecoveryIOException)?.Details;
         }
         Save(session);
+        InspectCopy(session, entry);
     }
 
     private void Quarantine(CleanupSession session, CleanupEntry entry)
@@ -251,7 +268,18 @@ public sealed class RecoveryService
             var destination = QuarantinePath(session, entry);
             EnsurePlainPath(destination);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            Move(item, item.Target, destination);
+            try
+            {
+                Move(item, item.Target, destination);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                InspectCopy(session, entry);
+                var originalInPlace = entry.CopyStatus == RecoveryCopyStatus.Missing && entry.OriginalPathPresent;
+                if (originalInPlace)
+                    entry.State = CleanupState.OriginalInPlace;
+                throw DescribeMoveFailure(exception, originalInPlace);
+            }
             return;
         }
 
@@ -261,7 +289,7 @@ public sealed class RecoveryService
                ?? throw new RecoveryIOException("注册表项已不存在。", "The registry key no longer exists."))
         {
             entry.RegistryBackup = item.Kind == LeftoverKind.RegistryValue
-                ? new RegistryTree([RegistryData.Read(source, item.ValueName!)], new())
+                ? new RegistryTree([ReadVerifiedRegistryValue(source, item)], new())
                 : Snapshot(source, item.View.Value);
             Save(session);
             if (item.Kind == LeftoverKind.RegistryValue)
@@ -269,8 +297,11 @@ public sealed class RecoveryService
                 var saved = entry.RegistryBackup.Values.Single();
                 var live = RegistryData.Read(source, item.ValueName!);
                 if (saved.Kind != live.Kind || !saved.Data.SequenceEqual(live.Data))
+                {
+                    entry.RegistryBackup = null;
                     throw new RecoveryIOException("注册表值在备份期间发生变化，已跳过。",
                         "Skipped the registry value because it changed while being backed up.");
+                }
                 source.DeleteValue(item.ValueName!);
                 return;
             }
@@ -280,6 +311,24 @@ public sealed class RecoveryService
         }
         EnsurePlainRegistryPath(hive, item.Target, item.View.Value);
         hive.DeleteSubKeyTree(item.Target);
+    }
+
+    internal static RegistryData ReadVerifiedRegistryValue(RegistryKey source, LeftoverItem item)
+    {
+        var saved = RegistryData.Read(source, item.ValueName!);
+        if (item.EvidenceKind != LeftoverEvidence.StartupCommand)
+            return saved;
+
+        var command = saved.Kind switch
+        {
+            RegistryValueKind.String => saved.Data[0],
+            RegistryValueKind.ExpandString => Environment.ExpandEnvironmentVariables(saved.Data[0]),
+            _ => null
+        };
+        if (!LeftoverScanner.StartupCommandStillMatches(command, item.EvidencePath))
+            throw new RecoveryIOException("自启动项的程序路径已变化，请重新扫描。",
+                "The startup entry now points to a different program. Scan again.");
+        return saved;
     }
 
     private void RestoreEntry(CleanupSession session, CleanupEntry entry)
@@ -424,7 +473,79 @@ public sealed class RecoveryService
         if (session is null || session.Id != id || session.Entries is null ||
             session.Entries.Any(entry => entry?.Item is null || !Enum.IsDefined(entry.Item.Kind)))
             throw new RecoveryIOException("恢复记录无效。", "The recovery record is invalid.");
+        foreach (var entry in session.Entries)
+            InspectCopy(session, entry);
         return session;
+    }
+
+    private void InspectCopy(CleanupSession session, CleanupEntry entry)
+    {
+        entry.CopyStatus = RecoveryCopyStatus.Unverified;
+        entry.OriginalPathPresent = false;
+        entry.CopyCheckError = null;
+        if (entry.State is CleanupState.Restored or CleanupState.Skipped or CleanupState.Discarded)
+            return;
+
+        if (!IsFileSystem(entry.Item))
+        {
+            entry.CopyStatus = entry.RegistryBackup is null ? RecoveryCopyStatus.Missing : RecoveryCopyStatus.Available;
+            return;
+        }
+
+        try
+        {
+            var vaultPath = QuarantinePath(session, entry);
+            EnsurePlainPath(vaultPath);
+            if (GetAttributes(vaultPath) is { } attributes)
+            {
+                if (MatchesItemType(entry.Item, attributes))
+                    entry.CopyStatus = RecoveryCopyStatus.Available;
+                else
+                    entry.CopyCheckError = Localization.Text("隔离位置的项目类型与记录不符。",
+                        "The item in quarantine does not match the recorded item type.");
+                return;
+            }
+
+            entry.CopyStatus = RecoveryCopyStatus.Missing;
+            entry.OriginalPathPresent = GetAttributes(entry.Item.Target) is { } original && MatchesItemType(entry.Item, original);
+        }
+        catch (Exception exception) when (IsEntryFailure(exception))
+        {
+            entry.CopyCheckError = Localization.Text($"无法核对隔离副本的位置。{exception.Message}",
+                $"Could not verify the recovery copy location. {exception.Message}");
+        }
+    }
+
+    private static bool MatchesItemType(LeftoverItem item, FileAttributes attributes) =>
+        !attributes.HasFlag(FileAttributes.ReparsePoint) &&
+        attributes.HasFlag(FileAttributes.Directory) == (item.Kind == LeftoverKind.Directory);
+
+    private static bool IsEntryFailure(Exception exception) => exception is IOException or UnauthorizedAccessException
+        or System.Security.SecurityException or InvalidOperationException or ArgumentException;
+
+    private static Exception DescribeMoveFailure(Exception exception, bool originalInPlace)
+    {
+        var result = (uint)exception.HResult;
+        var code = result >> 16 == 0x8007 ? result & 0xffff : result;
+        var (chinese, english) = code switch
+        {
+            32 or 33 => ($"Windows 报告文件正在被占用（错误 {code}）。请正常退出正在使用它的程序，再重新扫描残留。",
+                $"Windows reported a file sharing or lock violation (error {code}). Close the app using it, then scan for leftovers again."),
+            5 => ("Windows 拒绝移动该项目（错误 5）。请先退出可能正在使用它的程序。若仍失败，请核对目录权限后重新扫描。",
+                "Windows denied the move (error 5). Close any app that may be using the item. If the issue persists, check the folder permissions, then scan again."),
+            _ when originalInPlace => ($"无法将项目移入隔离区。{exception.Message}",
+                $"Could not move the item to quarantine. {exception.Message}"),
+            _ => (null, null),
+        };
+        if (chinese is null || english is null)
+            return exception;
+
+        if (originalInPlace)
+        {
+            chinese = $"项目仍在原位置，本次没有隔离副本。{chinese}";
+            english = $"The item remains at its original path. No recovery copy was created. {english}";
+        }
+        return new RecoveryIOException(chinese, english, exception);
     }
 
     private void Save(CleanupSession session)
