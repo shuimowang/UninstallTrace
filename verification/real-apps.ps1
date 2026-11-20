@@ -129,8 +129,8 @@ if ($Product -eq 'SumatraPDF') {
     $source = 'https://github.com/WinMerge/winmerge/releases/download/v2.16.60/WinMerge-2.16.60-x64-PerUser-Setup.exe'
     $sha256 = '35217E6B3BB981E37B7CE3858E686E4EE3AFE5CB7820FF5960258829FEA0BA03'
     $version = '2.16.60'
-    $namePattern = '^WinMerge(?:\s|$)'
-    $processNames = @('WinMergeU')
+    $namePattern = '^WinMerge(?:\s|\(|$)'
+    $processNames = @('WinMergeU', 'WinMerge32BitPluginProxy')
     $binary = Join-Path $installPath 'WinMergeU.exe'
     $settingsDirectory = Join-Path $roamingData 'WinMerge'
     $settingsFile = Join-Path $settingsDirectory 'WinMerge-verification.ini'
@@ -176,14 +176,17 @@ if ($Product -eq 'SumatraPDF') {
     try {
         Wait-FixtureCondition 30 {
             $process.Refresh()
-            if ($process.HasExited) { throw "SumatraPDF exited before its window appeared ($($process.ExitCode))." }
-            $process.MainWindowHandle -ne [IntPtr]::Zero
-        } 'SumatraPDF did not open its main window.'
-        if (!$process.CloseMainWindow() -or !$process.WaitForExit(15000) -or $process.ExitCode -ne 0) {
-            throw 'SumatraPDF did not close normally and save preferences.'
+            if ($process.HasExited) { throw "SumatraPDF exited before writing its initial settings ($($process.ExitCode))." }
+            [IO.File]::Exists($settingsFile) -and (Get-Item -LiteralPath $settingsFile).Length -gt 0
+        } 'SumatraPDF did not write its initial settings.'
+        if ($process.MainWindowHandle -ne [IntPtr]::Zero -and $process.CloseMainWindow() -and $process.WaitForExit(15000)) {
+            if ($process.ExitCode -ne 0) { throw "SumatraPDF exited with code $($process.ExitCode)." }
         }
     } finally {
-        if (!$process.HasExited) { $process.Kill($true) }
+        if (!$process.HasExited) {
+            $process.Kill($true)
+            if (!$process.WaitForExit(10000)) { throw 'The fixture application process did not exit.' }
+        }
         $process.Dispose()
     }
 } else {
@@ -214,7 +217,7 @@ if ([IO.Path]::GetDirectoryName($uninstaller) -ne $installPath -or ![IO.File]::E
 }
 Invoke-FixtureProcess $uninstaller $uninstallArguments
 Wait-FixtureCondition 60 {
-    @(Get-ProductRegistrations $namePattern).Count -eq 0 -and ![IO.File]::Exists($binary) -and
+    @(Get-ProductRegistrations $namePattern).Count -eq 0 -and ![IO.File]::Exists($binary) -and ![IO.File]::Exists($uninstaller) -and
     @(Get-Process -Name $processNames -ErrorAction SilentlyContinue).Count -eq 0
 } 'Vendor uninstall did not clear the fixture registration, binary and application processes.'
 Write-Host 'Confirmed native uninstall completed.'

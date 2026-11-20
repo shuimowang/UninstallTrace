@@ -28,6 +28,8 @@ UninstallTrace 先运行软件自带的卸载程序，再检查遗留文件和�
 
 在 Windows 上安装 .NET 10 SDK。集成验证使用临时文件和当前用户注册表中的模拟数据。
 
+[真实卸载验证](.github/workflows/real-apps.yml) 在两台一次性 Windows 虚拟机上分别安装 SumatraPDF 和 WinMerge。在相同的原厂卸载结果上对照 v0.1.3 与当前扫描器，并检查隔离、恢复和共享目录保护。[验证方法与结果](docs/uninstall-verification.md)
+
 ```powershell
 dotnet build -c Release
 dotnet run --project verification/DeepUninstaller.Verification.csproj -c Release

@@ -531,8 +531,9 @@ public partial class MainWindow : Window
             SetStatus(Text("正在恢复选中记录的隔离项…", "Restoring quarantined items for the selected session…"));
             var session = await Task.Run(() => recovery.Restore(row.Session.Id));
             await RefreshHistory(session.Id);
+            var needsReview = new SessionRow(session).Failed;
             SetStatus(Text($"该次记录已恢复 {session.Entries.Count(entry => entry.State == CleanupState.Restored)} 项，", $"Restored {session.Entries.Count(entry => entry.State == CleanupState.Restored)} items. ")
-                + Text($"待核对 {new SessionRow(session).Failed} 项。", $"{new SessionRow(session).Failed} need review."));
+                + Text($"待核对 {needsReview} 项。", $"{needsReview} need review."));
         });
     }
 
@@ -547,8 +548,9 @@ public partial class MainWindow : Window
             SetStatus(Text("正在删除选中的恢复副本…", "Deleting the selected recovery copies…"));
             var session = await Task.Run(() => recovery.Discard(row.Session.Id));
             await RefreshHistory(session.Id);
+            var needsReview = new SessionRow(session).Failed;
             SetStatus(Text($"该次记录已删除 {session.Entries.Count(entry => entry.State == CleanupState.Discarded)} 项恢复副本，", $"Deleted {session.Entries.Count(entry => entry.State == CleanupState.Discarded)} recovery copies. ")
-                + Text($"待核对 {new SessionRow(session).Failed} 项。", $"{new SessionRow(session).Failed} need review."));
+                + Text($"待核对 {needsReview} 项。", $"{needsReview} need review."));
         });
     }
 

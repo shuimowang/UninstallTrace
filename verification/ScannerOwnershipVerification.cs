@@ -10,6 +10,7 @@ internal static class ScannerOwnershipVerification
         var token = $"UninstallTrace-OwnershipVerification-{Guid.NewGuid():N}";
         VerifySharedCommands(Path.Combine(productRoot, token), token);
         VerifyNameVariants(productRoot, token);
+        VerifyCorroboratedInstallerName(productRoot, token);
     }
 
     private static void VerifySharedCommands(string root, string token)
@@ -83,6 +84,61 @@ internal static class ScannerOwnershipVerification
         {
             foreach (var folder in folders)
                 DeleteEmptyDirectory(folder);
+        }
+    }
+
+    private static void VerifyCorroboratedInstallerName(string localRoot, string token)
+    {
+        var installationParent = Path.Combine(localRoot, $"{token}-Installation");
+        var installPath = Path.Combine(installationParent, token);
+        var settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), token);
+        const string version = "2.16.60";
+        var app = Fixture($"{token} x64 (Current user, 64-bit)") with
+        {
+            Version = version,
+            InstallLocation = installPath,
+            DisplayIcon = $"\"{Path.Combine(installPath, "Program.exe")}\",0"
+        };
+        Require(!Directory.Exists(installationParent) && !Directory.Exists(settingsPath),
+            "Installer qualifier fixtures must use new directories.");
+
+        try
+        {
+            // Model the post-uninstall scan. The original EXE and install folder no longer exist.
+            Directory.CreateDirectory(settingsPath);
+            Require(FindDirectory(app, settingsPath, [app]) is
+                { Confidence: LeftoverConfidence.Possible, EvidenceKind: LeftoverEvidence.CorroboratedInstallerName },
+                "Architecture and scope qualifiers can be removed when both recorded paths confirm the product name.");
+
+            var versioned = app with { Name = $"{token} x64 v{version} (Current user, 64-bit)" };
+            Require(FindDirectory(versioned, settingsPath, [versioned])?.EvidenceKind == LeftoverEvidence.CorroboratedInstallerName,
+                "The alias can also omit the exact recorded version between installer qualifiers.");
+
+            var noIcon = app with { DisplayIcon = "" };
+            Require(FindDirectory(noIcon, settingsPath, [noIcon]) is null,
+                "A matching install folder alone is not enough to broaden name-only attribution.");
+
+            var unrelatedIcon = app with { DisplayIcon = Path.Combine(installationParent, "Unrelated.exe") };
+            Require(FindDirectory(unrelatedIcon, settingsPath, [unrelatedIcon]) is null,
+                "An icon executable outside the install folder does not corroborate the alias.");
+
+            var edition = Fixture($"{token} x86 (All users, 32-bit)");
+            Require(FindDirectory(app, settingsPath, [app, edition]) is null,
+                "An installed edition with the same product name vetoes the alias without path metadata.");
+
+            var plain = Fixture(token);
+            Require(FindDirectory(plain, settingsPath, [plain])?.Confidence == LeftoverConfidence.Possible,
+                "A unique undecorated product name matches its settings folder.");
+            Require(FindDirectory(plain, settingsPath, [plain, edition]) is null,
+                "A decorated installed edition also vetoes name-only attribution for an undecorated selection.");
+
+            var reader = app with { Name = $"{token} Reader x64 (Current user, 64-bit)" };
+            Require(FindDirectory(reader, settingsPath, [reader]) is null,
+                "Product terms such as Reader are preserved when removing installer qualifiers.");
+        }
+        finally
+        {
+            DeleteEmptyDirectory(settingsPath);
         }
     }
 

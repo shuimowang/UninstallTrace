@@ -28,6 +28,8 @@ Name matches alone require a manual selection. The recovery vault covers the fil
 
 Use the .NET 10 SDK on Windows. The integration harness uses temporary files and current-user registry fixtures to test scanning, ownership checks, quarantine, and restoration.
 
+The [real Windows uninstall checks](.github/workflows/real-apps.yml) use separate disposable Windows machines for SumatraPDF and WinMerge. They compare the scanner with v0.1.3 on the same post-uninstall state and verify quarantine and restoration against known files, registry data, and shared-folder controls. [Method and results](docs/uninstall-verification.md)
+
 ```powershell
 dotnet build -c Release
 dotnet run --project verification/DeepUninstaller.Verification.csproj -c Release

@@ -39,7 +39,8 @@ internal static class RealAppVerification
         if (!tracked.Any(p => p.Group == "observed") || !tracked.Any(p => p.Group == "control"))
             throw new InvalidDataException("Each case needs vendor-created observations and independent controls.");
 
-        var scan = LeftoverScanner.Scan(snapshot, InstalledApps.Read());
+        var inventory = InstalledApps.Read();
+        var scan = LeftoverScanner.Scan(snapshot, inventory);
         var before = tracked.ToDictionary(p => p, p => p.Fingerprint());
         var observations = tracked.Select(p => new
         {
@@ -52,18 +53,30 @@ internal static class RealAppVerification
         var detected = observed.Count(o => o.PresentAfterVendor && o.Candidate is not null);
         var controlHits = observations.Count(o => o.Group == "control" && o.Candidate is not null);
         var engine = args[0] == "--real-report" ? "v0.1.3" : "candidate";
+        var seed = expectations.SeededFiles.Single();
+        var peerExe = Path.Combine(Path.GetDirectoryName(seed)!, "UninstallTrace-neighbor-fixture.exe");
+        var peer = new InstalledApp
+        {
+            Hive = RegistryHive.CurrentUser, View = RegistryView.Default,
+            KeyName = $"UninstallTrace-TestPeer-{Guid.NewGuid():N}",
+            Name = "UninstallTrace shared-folder test peer", UninstallString = $"\"{peerExe}\" /uninstall"
+        };
+        peer = peer with { RegistryPath = $@"{InstalledApps.UninstallRegistryPath}\{peer.KeyName}" };
+        var sharedProbe = new Probe(peerExe, false, "shared-uninstaller control");
+        var sharedFolderOffered = LeftoverScanner.Scan(snapshot, [.. inventory, peer]).Items.Any(sharedProbe.CoveredBy);
         var countLine = $"{snapshot.Name} {snapshot.Version} ({engine}): vendor removed {observed.Length - remaining}/{observed.Length} watched artifacts; " +
             $"scanner found {detected}/{remaining} observed leftovers; seeded hits {observations.Count(o => o.Group == "seeded" && o.Candidate != null)}/" +
-            $"{expectations.SeededFiles.Length}; hits on protected controls {controlHits}/{tracked.Count(p => p.Group == "control")}.";
+            $"{expectations.SeededFiles.Length}; hits on protected controls {controlHits}/{tracked.Count(p => p.Group == "control")}; " +
+            $"shared uninstall-folder offered with a registered peer: {sharedFolderOffered}.";
         Console.WriteLine(countLine);
         if (Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY") is { } summary)
             File.AppendAllText(summary, $"- {countLine}{Environment.NewLine}");
         File.WriteAllText(args[3], JsonSerializer.Serialize(new { snapshot.Name, snapshot.Version, Engine = engine,
-            Candidates = scan.Items, scan.Warnings, Observations = observations }, Json));
+            Candidates = scan.Items, scan.Warnings, SharedFolderOffered = sharedFolderOffered, Observations = observations }, Json));
         if (args[0] == "--real-report")
             return 0;
 
-        if (controlHits != 0 || tracked.Any(p => p.Group == "control" && before[p] is null))
+        if (controlHits != 0 || sharedFolderOffered || tracked.Any(p => p.Group == "control" && before[p] is null))
             throw new InvalidOperationException("A protected control was missing or was suggested for cleanup.");
         var targets = tracked.Where(p => p.Group != "control" && before[p] is not null).ToArray();
         if (targets.Length == 0 || expectations.SeededFiles.Any(path => !File.Exists(path)))
@@ -73,6 +86,8 @@ internal static class RealAppVerification
             throw new InvalidOperationException("The scanner missed a test target or proposed too broad a parent. See the report.");
 
         var recovery = new RecoveryService(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[3]))!, "vault"));
+        var earlierFolder = selected.Single(item => item.Kind == LeftoverKind.Directory && AtOrBelow(seed, item.Target));
+        VerifyLateRegistration(snapshot, peer, sharedProbe, earlierFolder, recovery);
         var session = recovery.Clean(snapshot, selected, requireUnregistered: true);
         if (session.Entries.Any(e => e.State != CleanupState.Quarantined) || targets.Any(p => p.Fingerprint() != null))
             throw new InvalidOperationException("Quarantine did not remove all selected test targets.");
@@ -87,6 +102,37 @@ internal static class RealAppVerification
 
     private static T Read<T>(string file) => JsonSerializer.Deserialize<T>(File.ReadAllText(file), Json)
         ?? throw new InvalidDataException($"Empty verification input: {file}");
+
+    private static void VerifyLateRegistration(InstalledApp app, InstalledApp peer, Probe peerFile,
+        LeftoverItem reviewedDirectory, RecoveryService recovery)
+    {
+        if (InstalledApps.IsRegistered(peer))
+            throw new IOException("Unexpected pre-existing peer registration.");
+        bool registered = false;
+        using (var stream = new FileStream(peerFile.Path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            stream.Write("inert shared-directory test fixture"u8);
+        try
+        {
+            var original = peerFile.Fingerprint();
+            using (var key = Registry.CurrentUser.CreateSubKey(peer.RegistryPath))
+            {
+                registered = true;
+                key.SetValue("DisplayName", peer.Name);
+                key.SetValue("UninstallString", peer.UninstallString);
+            }
+            var guarded = recovery.Clean(app, [reviewedDirectory], requireUnregistered: true);
+            if (guarded.Entries.Single().State != CleanupState.Skipped || peerFile.Fingerprint() != original)
+                throw new InvalidOperationException("A newly registered peer lost its file or its shared folder.");
+        }
+        finally
+        {
+            if (registered) Registry.CurrentUser.DeleteSubKey(peer.RegistryPath);
+            File.Delete(peerFile.Path);
+        }
+    }
+
+    private static bool AtOrBelow(string path, string parent) => Paths.Equals(path, parent) ||
+        path.StartsWith(parent.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
 
     private sealed class Expectations
     {
@@ -140,7 +186,5 @@ internal static class RealAppVerification
             return new(values, children);
         }
 
-        private static bool AtOrBelow(string path, string parent) => Paths.Equals(path, parent) ||
-            path.StartsWith(parent.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
     }
 }

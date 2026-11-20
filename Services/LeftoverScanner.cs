@@ -26,7 +26,8 @@ public enum LeftoverEvidence
     PublisherKeyMatchesName,
     AppPath,
     StartupCommand,
-    Shortcut
+    Shortcut,
+    CorroboratedInstallerName
 }
 
 public sealed record LeftoverItem(
@@ -72,6 +73,9 @@ public sealed record LeftoverItem(
             $"The startup command directly points to {EvidencePath}."),
         LeftoverEvidence.Shortcut => Localization.Text($"快捷方式直接指向 {EvidencePath}",
             $"The shortcut directly points to {EvidencePath}."),
+        LeftoverEvidence.CorroboratedInstallerName => Localization.Text(
+            "名称与安装目录佐证的应用名称一致，已略去登记名称末尾的架构、安装范围或版本信息。",
+            "The name matches the product name confirmed by the install folder after removing installer qualifiers."),
         _ => StoredEvidence
     };
 
@@ -90,6 +94,10 @@ public static class LeftoverScanner
     private static readonly Guid ShellLinkClassId = new("00021401-0000-0000-C000-000000000046");
     private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly Regex ExecutableEnd = new(@"\.exe(?=\s|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private const string InstallerQualifier = @"(?:x64|x86|amd64|arm64|arm|(?:32|64)[ -]?bit|current\s+user|all\s+users|per[ -]user|per[ -]machine)";
+    private static readonly Regex InstallerQualifierSuffix = new(
+        $@"(?:\s*\(\s*{InstallerQualifier}(?:\s*,\s*{InstallerQualifier})*\s*\)|\s+{InstallerQualifier})+$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private static readonly HashSet<string> ReservedDosNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
@@ -218,6 +226,7 @@ public static class LeftoverScanner
         private readonly InstalledApp _app;
         private readonly CancellationToken _cancellationToken;
         private readonly HashSet<string> _names;
+        private readonly string? _nameOnlyAlias;
         private readonly string? _publisher;
         private readonly string? _displayExecutable;
         private readonly string[] _otherLocations;
@@ -246,7 +255,9 @@ public static class LeftoverScanner
                     .Append(ReadDisplayExecutable(other.DisplayIcon)))
                 .OfType<string>().Distinct(PathComparer).ToArray();
             _ambiguousName = others.Any(other => _names.Overlaps(IdentityNames(other))
+                || _names.Contains(Identity(UndecoratedName(other)))
                 || _names.Contains(Identity(other.Publisher)));
+            _nameOnlyAlias = _ambiguousName ? null : GetNameOnlyAlias(others, publisher);
         }
 
         public LeftoverScanResult Run()
@@ -341,7 +352,7 @@ public static class LeftoverScanner
 
         private void ScanProductFolders()
         {
-            if (_ambiguousName || _names.Count == 0)
+            if (_ambiguousName || (_names.Count == 0 && _nameOnlyAlias is null))
             {
                 return;
             }
@@ -351,18 +362,19 @@ public static class LeftoverScanner
                 foreach (var directory in EnumerateDirectories(root))
                 {
                     var name = Identity(Path.GetFileName(directory));
-                    if (_names.Contains(name))
+                    if (MatchesNameOnly(name))
                     {
-                        AddProductFolder(directory, LeftoverEvidence.ProductFolderMatchesName);
+                        AddProductFolder(directory, NameEvidence(name, LeftoverEvidence.ProductFolderMatchesName));
                     }
 
                     if (name == _publisher)
                     {
                         foreach (var child in EnumerateDirectories(directory))
                         {
-                            if (_names.Contains(Identity(Path.GetFileName(child))))
+                            var childName = Identity(Path.GetFileName(child));
+                            if (MatchesNameOnly(childName))
                             {
-                                AddProductFolder(child, LeftoverEvidence.PublisherFolderMatchesName);
+                                AddProductFolder(child, NameEvidence(childName, LeftoverEvidence.PublisherFolderMatchesName));
                             }
                         }
                     }
@@ -433,7 +445,7 @@ public static class LeftoverScanner
         {
             _cancellationToken.ThrowIfCancellationRequested();
             using var root = RegistryKey.OpenBaseKey(hive, view);
-            if (!_ambiguousName && _names.Count > 0)
+            if (!_ambiguousName && (_names.Count > 0 || _nameOnlyAlias is not null))
             {
                 ScanSoftwareKeys(root, hive, view);
             }
@@ -482,9 +494,9 @@ public static class LeftoverScanner
                     _cancellationToken.ThrowIfCancellationRequested();
                     var identity = Identity(name);
                     var path = $"SOFTWARE\\{name}";
-                    if (_names.Contains(identity))
+                    if (MatchesNameOnly(identity))
                     {
-                        Add(new LeftoverItem(LeftoverKind.RegistryKey, path, LeftoverEvidence.SoftwareKeyMatchesName,
+                        Add(new LeftoverItem(LeftoverKind.RegistryKey, path, NameEvidence(identity, LeftoverEvidence.SoftwareKeyMatchesName),
                             LeftoverConfidence.Possible, hive, view));
                     }
 
@@ -498,10 +510,11 @@ public static class LeftoverScanner
                         foreach (var appKey in publisher.GetSubKeyNames())
                         {
                             _cancellationToken.ThrowIfCancellationRequested();
-                            if (_names.Contains(Identity(appKey)))
+                            var keyName = Identity(appKey);
+                            if (MatchesNameOnly(keyName))
                             {
                                 Add(new LeftoverItem(LeftoverKind.RegistryKey, $"{path}\\{appKey}",
-                                    LeftoverEvidence.PublisherKeyMatchesName, LeftoverConfidence.Possible, hive, view));
+                                    NameEvidence(keyName, LeftoverEvidence.PublisherKeyMatchesName), LeftoverConfidence.Possible, hive, view));
                             }
                         }
                     });
@@ -695,6 +708,30 @@ public static class LeftoverScanner
             _otherLocations.Any(other => IsAtOrUnder(other, path) || IsAtOrUnder(path, other))
             || _otherExecutables.Any(executable => IsAtOrUnder(executable, path));
 
+        private string? GetNameOnlyAlias(InstalledApp[] others, string publisher)
+        {
+            var alias = Identity(UndecoratedName(_app));
+            if (_names.Contains(alias) || !IsUsableName(alias, publisher)
+                || NormalizePath(_app.InstallLocation) is not { } installPath
+                || Identity(Path.GetFileName(installPath)) != alias
+                || _displayExecutable is null || PathComparer.Equals(_displayExecutable, installPath)
+                || !IsAtOrUnder(_displayExecutable, installPath)
+                || !TryValidateFileSystemTarget(installPath, out _) || !TryValidateFileSystemTarget(_displayExecutable, out _)
+                || IsShared(installPath))
+            {
+                return null;
+            }
+
+            // Other editions can own the product's settings even when their install paths are unregistered.
+            return others.Any(other => Identity(UndecoratedName(other)) == alias || Identity(other.Name) == alias
+                || Identity(other.Publisher) == alias) ? null : alias;
+        }
+
+        private bool MatchesNameOnly(string name) => name == _nameOnlyAlias || _names.Contains(name);
+
+        private LeftoverEvidence NameEvidence(string name, LeftoverEvidence exact) =>
+            name == _nameOnlyAlias ? LeftoverEvidence.CorroboratedInstallerName : exact;
+
         private void Add(LeftoverItem item)
         {
             var key = $"{item.Kind}|{item.Hive}|{item.View}|{item.Target}|{item.ValueName}";
@@ -712,8 +749,7 @@ public static class LeftoverScanner
         void AddName(string name)
         {
             var token = Identity(name);
-            if (token.Count(char.IsLetterOrDigit) >= (token.Any(character => character > 127) ? 2 : 3)
-                && !IsSharedName(token) && token != publisher && token.Any(char.IsLetter))
+            if (IsUsableName(token, publisher))
             {
                 result.Add(token);
             }
@@ -721,19 +757,37 @@ public static class LeftoverScanner
 
         var name = app.Name.Trim();
         AddName(name);
-        var version = app.Version.Trim();
-        if (version.Length > 0)
+        if (WithoutVersionSuffix(name, app.Version.Trim()) is { } alias)
         {
-            foreach (var suffix in new[] { $" {version}", $" v{version}", $" ({version})" })
-            {
-                if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    AddName(name[..^suffix.Length]);
-                }
-            }
+            AddName(alias);
         }
 
         return result;
+    }
+
+    private static bool IsUsableName(string token, string publisher) =>
+        token.Count(char.IsLetterOrDigit) >= (token.Any(character => character > 127) ? 2 : 3)
+        && !IsSharedName(token) && token != publisher && token.Any(char.IsLetter);
+
+    private static string UndecoratedName(InstalledApp app)
+    {
+        var name = InstallerQualifierSuffix.Replace(app.Name.Trim(), "");
+        var withoutVersion = WithoutVersionSuffix(name, app.Version.Trim());
+        return withoutVersion is null ? name : InstallerQualifierSuffix.Replace(withoutVersion, "");
+    }
+
+    private static string? WithoutVersionSuffix(string name, string version)
+    {
+        if (version.Length == 0)
+            return null;
+
+        foreach (var suffix in new[] { $" {version}", $" v{version}", $" ({version})" })
+        {
+            if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return name[..^suffix.Length];
+        }
+
+        return null;
     }
 
     private static string Identity(string value) => new(value
