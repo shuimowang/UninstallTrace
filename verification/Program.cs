@@ -10,8 +10,12 @@ const string ProofText = "fixture command argument with spaces";
 
 if (args is ["--fixture-uninstall", var childId, ProofText])
     return RunFixtureUninstaller(childId);
+if (args is ["--probe-path-attributes", var manifest])
+    return PathAttributeProbe.Run(manifest);
 if (args.Length != 0 && args[0].StartsWith("--real-", StringComparison.Ordinal))
     return RealAppVerification.Run(args);
+if (args.Length != 0 && args[0] == "--benchmark-scan")
+    return ScannerBenchmark.Run(args);
 if (args.Length != 0)
     return 1;
 
