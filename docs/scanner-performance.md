@@ -24,11 +24,11 @@ dotnet $candidateVerificationDll --benchmark-scan baseline.json 10 > candidate.j
 
 A separate [hosted Windows experiment](https://github.com/shuimowang/UninstallTrace/actions/runs/44760296802) compared a Release C# program and optimized Rust program calling `GetFileAttributesW`. Both read the same 256 paths (directories, files and missing paths) eight times per timed batch. Each language produced 60 measured batches across four processes after warm-up. Input decoding, startup and output formatting were outside the timer. The attribute checksums matched in every batch.
 
-| 2,048 path queries per batch | Median | P95 |
-| --- | ---: | ---: |
-| C# / .NET | 31.48 ms | 42.77 ms |
-| Rust | 32.54 ms | 56.72 ms |
+| 2,048 path queries per batch | First VM median | First VM P95 | Second VM median | Second VM P95 |
+| --- | ---: | ---: | ---: | ---: |
+| C# / .NET | 31.48 ms | 42.77 ms | 20.01 ms | 31.79 ms |
+| Rust | 32.54 ms | 56.72 ms | 19.08 ms | 31.56 ms |
 
-This probe measures the call pattern on one hosted machine. It gives no estimate for a complete Rust scanner, cold launch time, memory usage or installer size. The application continues to use C# and WPF.
+The [repeat on a second VM](https://github.com/shuimowang/UninstallTrace/actions/runs/44761409899) reversed the small median difference. This probe gives no estimate for a complete Rust scanner, cold launch time, memory usage or installer size. The application continues to use C# and WPF.
 
-两种语言调用相同 Windows 接口的中位数相近。本次实验证明现有扫描器可以通过减少无关查询提速，整机重写的耗时和收益仍需用功能等价的实现测量。
+两台虚拟机上的语言先后次序相反。同一个 Windows 接口的这组测试尚无稳定的语言优势。现有 C# 扫描器已通过减少无关查询提速，整套扫描器重写后的效果仍需用功能等价的实现测量。
