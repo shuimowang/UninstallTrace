@@ -33,8 +33,11 @@ public partial class MainWindow
 
     protected override void OnClosed(EventArgs e)
     {
+        updateWindowClosed = true;
         sizeRead?.Cancel();
         updateCheck?.Cancel();
+        updateDownload?.Cancel();
+        stagedUpdate?.Dispose();
         base.OnClosed(e);
     }
 

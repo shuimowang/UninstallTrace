@@ -25,7 +25,7 @@ The language setting supports English, Simplified Chinese, and automatic selecti
 
 Desktop install dates come from uninstall registrations. Some installers omit the date. Applying an MSI patch or performing a repair can update it. Store apps use the package installation or last update date reported by Windows. [Microsoft's MSI date documentation](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)
 
-Open **Settings → About and updates** to see your version, check the latest stable release on GitHub, or open the repository and release history. Update checks run when requested. Use the release page to download a new portable build.
+UninstallTrace checks for a stable release on GitHub in the background when you open the app. In the Windows x64 portable build running with standard user permissions from a writable local folder, choose **Download update**, then **Restart and update** after the executable passes its SHA-256 check. The updated executable reopens from the same path. In **Settings → About and updates**, you can turn off the automatic check, check manually, or open the repository and release history.
 
 ## What it checks
 

@@ -31,7 +31,7 @@ public partial class MainWindow : Window
 
     public MainWindow() : this(startInSettings: false) { }
 
-    internal MainWindow(bool startInSettings)
+    internal MainWindow(bool startInSettings, bool? supportsPortableUpdate = null)
     {
         this.startInSettings = startInSettings;
         InitializeComponent();
@@ -39,6 +39,8 @@ public partial class MainWindow : Window
         AppVersionText.Text = Text($"当前版本 v{UpdateChecker.CurrentVersion}", $"Version v{UpdateChecker.CurrentVersion}");
         OpenRepositoryButton.Tag = UpdateChecker.RepositoryPage;
         OpenReleasesButton.Tag = UpdateChecker.ReleasesPage;
+        this.supportsPortableUpdate = supportsPortableUpdate ?? PortableUpdateInstaller.CanInstall;
+        AutoUpdateCheckBox.IsChecked = UpdatePreferences.ReadAutoCheck();
         DpiChanged += (_, _) => UpdateSizeColumnMinimum();
         switch (Preference)
         {
@@ -69,6 +71,8 @@ public partial class MainWindow : Window
         var elevated = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
         AccountText.Text = elevated ? Text("管理员权限", "Administrator") : Text("当前用户权限", "Current user");
         SetView(startInSettings ? MainView.Settings : MainView.Apps);
+        if (!startInSettings)
+            _ = CheckForUpdatesAtStartupAsync(AutoUpdateCheckBox.IsChecked == true, UpdateChecker.CheckAsync);
         await RunBusy(RefreshApps);
         if (startInSettings && currentView == MainView.Settings)
             SetStatus(Text("已更新界面语言。", "Display language updated."));
@@ -76,7 +80,7 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (busy)
+        if (busy || preparingUpdate)
         {
             e.Cancel = true;
             System.Media.SystemSounds.Beep.Play();
@@ -132,12 +136,12 @@ public partial class MainWindow : Window
     private void OnLanguageChoiceChanged(object sender, RoutedEventArgs e)
     {
         if (ApplyLanguageButton is not null)
-            ApplyLanguageButton.IsEnabled = !busy && SelectedLanguage != Preference;
+            ApplyLanguageButton.IsEnabled = !busy && !preparingUpdate && updateDownload is null && SelectedLanguage != Preference;
     }
 
     private void OnApplyLanguage(object sender, RoutedEventArgs e)
     {
-        if (busy || SelectedLanguage == Preference)
+        if (busy || preparingUpdate || updateDownload is not null || SelectedLanguage == Preference)
             return;
         try
         {
@@ -712,11 +716,12 @@ public partial class MainWindow : Window
 
     private async Task RunBusy(Func<Task> work)
     {
-        if (busy)
+        if (busy || preparingUpdate)
             return;
         busy = true;
         AppsNav.IsEnabled = AttemptsNav.IsEnabled = HistoryNav.IsEnabled = SettingsNav.IsEnabled = RefreshButton.IsEnabled = false;
         ApplyLanguageButton.IsEnabled = false;
+        RefreshUpdateActions();
         OnWorkflowBusyChanged(true);
         BusyProgress.Visibility = Visibility.Visible;
         UpdateSelection();
@@ -735,7 +740,8 @@ public partial class MainWindow : Window
         {
             busy = false;
             AppsNav.IsEnabled = AttemptsNav.IsEnabled = HistoryNav.IsEnabled = SettingsNav.IsEnabled = RefreshButton.IsEnabled = true;
-            ApplyLanguageButton.IsEnabled = SelectedLanguage != Preference;
+            ApplyLanguageButton.IsEnabled = updateDownload is null && SelectedLanguage != Preference;
+            RefreshUpdateActions();
             OnWorkflowBusyChanged(false);
             BusyProgress.Visibility = Visibility.Collapsed;
             UpdateSelection();

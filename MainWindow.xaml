@@ -34,6 +34,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Border Background="{StaticResource NavigationBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
@@ -52,7 +53,28 @@
                 </StackPanel>
             </DockPanel>
         </Border>
-        <Grid Grid.Row="1" Margin="12,8,12,8">
+        <Border x:Name="UpdateBanner" Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource ControlBorderBrush}"
+                BorderThickness="1" CornerRadius="8" Margin="12,8,12,0" Padding="9,6" Visibility="Collapsed">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="9,0,0,0" VerticalAlignment="Center">
+                    <Button x:Name="DownloadUpdateButton" Content="{local:UiText '下载更新', 'Download update'}" Style="{StaticResource PrimaryButton}"
+                            Click="OnDownloadUpdate" Margin="0,0,6,0" Visibility="Collapsed"/>
+                    <Button x:Name="InstallUpdateButton" Content="{local:UiText '重启并更新', 'Restart and update'}" Style="{StaticResource PrimaryButton}"
+                            Click="OnInstallUpdate" Margin="0,0,6,0" Visibility="Collapsed"/>
+                    <Button x:Name="CancelUpdateDownloadButton" Content="{local:UiText '取消下载', 'Cancel download'}"
+                            Click="OnCancelUpdateDownload" Visibility="Collapsed"/>
+                    <Button x:Name="OpenBannerReleaseButton" Content="{local:UiText '查看发行页', 'View release'}" Click="OnOpenProjectPage"
+                            Margin="0,0,6,0" Visibility="Collapsed"/>
+                    <Button x:Name="DismissUpdateButton" Content="{local:UiText '稍后', 'Later'}" Click="OnDismissUpdate"/>
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="UpdateBannerText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    <ProgressBar x:Name="UpdateBannerProgress" Maximum="100" Height="4" Margin="0,6,0,0" Visibility="Collapsed"
+                                 Foreground="{StaticResource AccentBrush}" AutomationProperties.Name="{local:UiText '更新下载进度', 'Update download progress'}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Row="2" Margin="12,8,12,8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -324,6 +346,8 @@
                             <StackPanel>
                                 <TextBlock Text="{local:UiText '关于与更新', 'About and updates'}" FontSize="15" FontWeight="SemiBold"/>
                                 <TextBlock x:Name="AppVersionText" Style="{StaticResource MutedText}" Margin="0,5,0,7"/>
+                                <CheckBox x:Name="AutoUpdateCheckBox" Content="{local:UiText '打开软件时检查更新', 'Check for updates when opening the app'}"
+                                          Click="OnAutoUpdateChanged" Margin="0,0,0,8"/>
                                 <WrapPanel>
                                     <Button x:Name="CheckUpdatesButton" Content="{local:UiText '检查更新', 'Check for updates'}"
                                             Click="OnCheckForUpdate" Margin="0,0,6,4"/>
@@ -331,6 +355,8 @@
                                             Click="OnOpenProjectPage" ToolTip="{Binding Tag, RelativeSource={RelativeSource Self}}" Margin="0,0,6,4"/>
                                     <Button x:Name="OpenReleasesButton" Content="{local:UiText '发行记录', 'Release history'}"
                                             Click="OnOpenProjectPage" ToolTip="{Binding Tag, RelativeSource={RelativeSource Self}}" Margin="0,0,0,4"/>
+                                    <Button x:Name="ShowUpdateButton" Content="{local:UiText '显示更新提示', 'Show update notice'}" Click="OnShowUpdate"
+                                            Margin="6,0,0,4" Visibility="Collapsed"/>
                                 </WrapPanel>
                                 <TextBlock x:Name="UpdateStatusText" Style="{StaticResource MutedText}" Margin="0,5,0,0" TextWrapping="Wrap"
                                            Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>

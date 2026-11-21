@@ -5,11 +5,21 @@ using System.Text.Json;
 
 namespace DeepUninstaller.Services;
 
-public sealed record UpdateCheckResult(Version LatestVersion, bool IsUpdateAvailable, Uri ReleasePage);
+public sealed record UpdateCheckResult(Version LatestVersion, bool IsUpdateAvailable, Uri ReleasePage, UpdateAsset? Asset = null);
+
+public sealed record UpdateAsset(Uri DownloadUri, long Size, string Sha256)
+{
+    internal const long MaximumSize = 256L * 1024 * 1024;
+
+    internal static bool ValidSize(long size) => size is > 0 and <= MaximumSize;
+
+    internal static bool ValidDigest(string? digest) => digest is { Length: 64 } && digest.All(char.IsAsciiHexDigit);
+}
 
 public static class UpdateChecker
 {
     private const string Repository = "shuimowang/UninstallTrace";
+    private const string AssetName = "UninstallTrace.exe";
     private static readonly Uri LatestReleaseApi = new($"https://api.github.com/repos/{Repository}/releases/latest");
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
     private static readonly HttpClient Client = new(new SocketsHttpHandler
@@ -57,8 +67,9 @@ public static class UpdateChecker
                 throw new InvalidDataException("GitHub did not return a published stable release with a valid version tag.");
             }
 
-            var page = new Uri($"{ReleasesPage}/tag/{name.GetString()}");
-            return new(latestVersion, latestVersion > ReleaseVersion(currentVersion), page);
+            var tag = name.GetString()!;
+            var page = new Uri($"{ReleasesPage}/tag/{tag}");
+            return new(latestVersion, latestVersion > ReleaseVersion(currentVersion), page, ReadAsset(release, tag));
         }
         catch (JsonException exception)
         {
@@ -68,6 +79,48 @@ public static class UpdateChecker
         {
             throw new TimeoutException("Timed out checking GitHub for a release.", exception);
         }
+    }
+
+    private static UpdateAsset? ReadAsset(JsonElement release, string tag)
+    {
+        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
+            return null;
+
+        JsonElement executable = default;
+        foreach (var asset in assets.EnumerateArray())
+        {
+            if (asset.ValueKind != JsonValueKind.Object || !asset.TryGetProperty("name", out var name) ||
+                name.ValueKind != JsonValueKind.String || !string.Equals(name.GetString(), AssetName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (executable.ValueKind != JsonValueKind.Undefined || name.GetString() != AssetName)
+                return null;
+            executable = asset;
+        }
+        if (executable.ValueKind == JsonValueKind.Undefined ||
+            !executable.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.String || state.GetString() != "uploaded" ||
+            !executable.TryGetProperty("size", out var size) || size.ValueKind != JsonValueKind.Number ||
+            !size.TryGetInt64(out var length) || !UpdateAsset.ValidSize(length) ||
+            !executable.TryGetProperty("digest", out var hash) || hash.ValueKind != JsonValueKind.String)
+            return null;
+
+        var digest = hash.GetString();
+        const string algorithm = "sha256:";
+        if (digest is null || !digest.StartsWith(algorithm, StringComparison.Ordinal) || !UpdateAsset.ValidDigest(digest[algorithm.Length..]))
+            return null;
+
+        return new(new Uri($"{ReleasesPage}/download/{tag}/{AssetName}"), length, digest[algorithm.Length..]);
+    }
+
+    internal static bool IsOfficialAssetUri(Uri? uri)
+    {
+        if (uri is null || !uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort ||
+            uri.UserInfo.Length != 0 || uri.Host != RepositoryPage.Host || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+            return false;
+        var prefix = $"{ReleasesPage.AbsolutePath}/download/";
+        var suffix = $"/{AssetName}";
+        var path = uri.AbsolutePath;
+        return path.StartsWith(prefix, StringComparison.Ordinal) && path.EndsWith(suffix, StringComparison.Ordinal) &&
+            path.Length > prefix.Length + suffix.Length && TryReadVersion(path[prefix.Length..^suffix.Length], out _);
     }
 
     private static bool TryReadVersion(string tag, out Version version)

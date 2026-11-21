@@ -33,7 +33,7 @@ if (integration && !HostedStartupVerification.Allow("Integration verification"))
 ThemeVerification.Run();
 Checkpoint("Window themes, inventory layout and ordering, and update settings");
 UpdateCheckerVerification.Run();
-Checkpoint("Stable release check, version ordering, and response and network failures");
+Checkpoint("Stable releases, verified downloads, cancellation, and network failures");
 
 (string Name, DateTime? Date)[] datedRows =
 [
@@ -49,6 +49,9 @@ Checkpoint("Newest and oldest sorting with unknown install dates");
 
 if (!integration)
     return 0;
+
+PortableUpdateVerification.Run();
+Checkpoint("Portable replacement, file locks, verification, and rollback");
 
 ScannerOwnershipVerification.Run();
 Checkpoint("Shared uninstallers and punctuation-sensitive app names");
