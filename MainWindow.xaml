@@ -5,6 +5,24 @@
     Style="{StaticResource DarkWindowStyle}"
     Title="UninstallTrace" Width="1100" Height="680" MinWidth="940" MinHeight="560"
     WindowStartupLocation="CenterScreen" Loaded="OnLoaded" Closing="OnClosing" PreviewKeyDown="OnPreviewKeyDown">
+    <Window.Resources>
+        <Thickness x:Key="SizeCellPadding">8,0</Thickness>
+        <Style x:Key="SizeCell" TargetType="DataGridCell" BasedOn="{StaticResource DarkGridCell}">
+            <Setter Property="Padding" Value="{StaticResource SizeCellPadding}"/>
+        </Style>
+        <Style x:Key="SizeText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
+            <Setter Property="TextTrimming" Value="None"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+        </Style>
+        <Style x:Key="DetailValue" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="IsReadOnlyCaretVisible" Value="True"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Padding" Value="1,0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="ToolTip" Value="{local:UiText '选中文字后按 Ctrl+C 复制', 'Select text and press Ctrl+C to copy'}"/>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="181"/>
@@ -131,9 +149,9 @@
                 </DockPanel>
                 <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition x:Name="AppListPane" Width="3.4*" MinWidth="470"/>
                         <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="244"/>
+                        <ColumnDefinition x:Name="AppDetailPane" Width="*" MinWidth="194" MaxWidth="410"/>
                     </Grid.ColumnDefinitions>
                     <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
                         <Grid>
@@ -142,7 +160,7 @@
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="{local:UiText '程序', 'App'}" Binding="{Binding Name}" Width="2.3*" MinWidth="112" SortMemberPath="Name" ElementStyle="{StaticResource CellText}"/>
                                     <DataGridTextColumn Header="{local:UiText '发布者', 'Publisher'}" Binding="{Binding Publisher}" Width="1.25*" MinWidth="79" SortMemberPath="Publisher" ElementStyle="{StaticResource CellText}"/>
-                                    <DataGridTextColumn Header="{local:UiText '版本', 'Version'}" Binding="{Binding Version}" Width="*" MinWidth="64" SortMemberPath="Version" ElementStyle="{StaticResource CellText}"/>
+                                    <DataGridTextColumn Header="{local:UiText '版本', 'Version'}" Binding="{Binding Version}" Width="1.15*" MinWidth="64" SortMemberPath="Version" ElementStyle="{StaticResource CellText}"/>
                                     <DataGridTextColumn Header="{local:UiText '安装日期', 'Installed'}" Binding="{Binding InstallDate}"
                                                         Width="100" SortMemberPath="InstalledOn" ElementStyle="{StaticResource CellText}">
                                         <DataGridTextColumn.HeaderStyle>
@@ -151,13 +169,43 @@
                                             </Style>
                                         </DataGridTextColumn.HeaderStyle>
                                     </DataGridTextColumn>
-                                    <DataGridTextColumn Header="{local:UiText '大小', 'Size'}" Binding="{Binding Size}" Width="70" SortMemberPath="Size" ElementStyle="{StaticResource CellText}"/>
+                                    <DataGridTextColumn x:Name="InventorySizeColumn" Header="{local:UiText '大小', 'Size'}"
+                                                        Binding="{Binding Size}" Width="Auto" SortMemberPath="Size"
+                                                        CellStyle="{StaticResource SizeCell}" ElementStyle="{StaticResource SizeText}">
+                                        <DataGridTextColumn.HeaderStyle>
+                                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DarkGridHeader}">
+                                                <Setter Property="ToolTip" Value="{local:UiText '安装程序登记的估算大小。破折号表示未登记。', 'Estimated size reported by the installer. A dash means no size was reported.'}"/>
+                                            </Style>
+                                        </DataGridTextColumn.HeaderStyle>
+                                    </DataGridTextColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                             <TextBlock x:Name="InventoryEmpty" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource MutedText}"/>
                         </Grid>
                     </Border>
-                    <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="12" CornerRadius="10">
+                    <GridSplitter x:Name="DetailSplitter" Grid.Column="1" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWE"
+                                  Focusable="True" KeyboardIncrement="12"
+                                  AutomationProperties.Name="{local:UiText '调整列表和详情宽度', 'Resize list and details'}"
+                                  ToolTip="{local:UiText '拖动分隔线，或聚焦后用左右方向键调整宽度', 'Drag to resize, or focus and use the arrow keys'}">
+                        <GridSplitter.Template>
+                            <ControlTemplate TargetType="GridSplitter">
+                                <Grid Background="{TemplateBinding Background}">
+                                    <Border x:Name="Grip" Width="2" Height="30" CornerRadius="1" Background="{StaticResource ControlBorderBrush}"/>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Grip" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                        <Setter TargetName="Grip" Property="Background" Value="{StaticResource FocusBrush}"/>
+                                        <Setter TargetName="Grip" Property="Width" Value="3"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </GridSplitter.Template>
+                    </GridSplitter>
+                    <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="11" CornerRadius="10">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
                                 <Button x:Name="UninstallButton" Content="{local:UiText '运行卸载', 'Run uninstaller'}" Style="{StaticResource PrimaryButton}" Click="OnUninstall" Margin="0,0,0,6" IsEnabled="False"/>
@@ -165,16 +213,26 @@
                             </StackPanel>
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
-                                    <TextBlock x:Name="AppName" Text="{local:UiText '选择一个程序', 'Select an app'}" TextWrapping="Wrap" FontSize="16" FontWeight="SemiBold"/>
-                                    <TextBlock x:Name="AppPublisher" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    <TextBox x:Name="AppName" Text="{local:UiText '选择一个程序', 'Select an app'}" Style="{StaticResource DetailValue}"
+                                             FontSize="16" FontWeight="SemiBold" AutomationProperties.Name="{local:UiText '程序名称', 'Program name'}"/>
                                     <StackPanel x:Name="AppDetails" Visibility="Collapsed">
+                                        <TextBox x:Name="AppPublisher" Style="{StaticResource DetailValue}" Foreground="{StaticResource MutedBrush}"
+                                                 AutomationProperties.Name="{local:UiText '发布者', 'Publisher'}" Margin="0,2,0,0"/>
                                         <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Margin="0,9,0,9"/>
+                                        <TextBlock Text="{local:UiText '版本', 'Version'}" Style="{StaticResource MutedText}" FontSize="12"/>
+                                        <TextBox x:Name="AppVersion" Style="{StaticResource DetailValue}" Margin="0,1,0,6"
+                                                 AutomationProperties.Name="{local:UiText '完整版本号', 'Full version'}"/>
+                                        <TextBlock Text="{local:UiText '估算大小', 'Estimated size'}" Style="{StaticResource MutedText}" FontSize="12"/>
+                                        <TextBox x:Name="AppSize" Style="{StaticResource DetailValue}" Margin="0,1,0,6"
+                                                 AutomationProperties.Name="{local:UiText '估算大小', 'Estimated size'}"/>
                                         <TextBlock Text="{local:UiText '安装信息', 'Installation details'}" Style="{StaticResource MutedText}" FontSize="12"/>
                                         <TextBlock x:Name="AppScope" TextWrapping="Wrap" Margin="0,2,0,8"/>
                                         <TextBlock Text="{local:UiText '安装位置', 'Install location'}" Style="{StaticResource MutedText}" FontSize="12"/>
-                                        <TextBlock x:Name="AppPath" TextWrapping="Wrap" Margin="0,2,0,8"/>
+                                        <TextBox x:Name="AppPath" Style="{StaticResource DetailValue}" Margin="0,1,0,7"
+                                                 AutomationProperties.Name="{local:UiText '安装位置', 'Install location'}"/>
                                         <TextBlock Text="{local:UiText '卸载命令', 'Uninstall command'}" Style="{StaticResource MutedText}" FontSize="12"/>
-                                        <TextBlock x:Name="AppCommand" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        <TextBox x:Name="AppCommand" Style="{StaticResource DetailValue}" Margin="0,1,0,0"
+                                                 AutomationProperties.Name="{local:UiText '卸载命令', 'Uninstall command'}"/>
                                     </StackPanel>
                                 </StackPanel>
                             </ScrollViewer>

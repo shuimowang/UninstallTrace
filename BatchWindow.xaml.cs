@@ -49,7 +49,7 @@ public partial class BatchWindow : Window
 
     private void SortRows()
     {
-        rows = InstallDateOrder.Sort(rows, row => row.App.InstalledOn, dateDirection)
+        rows = SortOrder.KnownFirst(rows, row => row.App.InstalledOn, dateDirection)
             .ThenBy(row => row.App.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(row => row.App.Id, StringComparer.OrdinalIgnoreCase).ToArray();
         Filter();

@@ -10,6 +10,12 @@ const string ProofText = "fixture command argument with spaces";
 
 if (args is ["--fixture-uninstall", var childId, ProofText])
     return RunFixtureUninstaller(childId);
+if (args is ["--verify-ui"])
+{
+    ThemeVerification.Run();
+    Checkpoint("Window themes, size-column layout, numeric ordering, and selectable details");
+    return 0;
+}
 if (args is ["--probe-path-attributes", var manifest])
     return PathAttributeProbe.Run(manifest);
 if (args.Length != 0 && args[0].StartsWith("--real-", StringComparison.Ordinal))
@@ -37,8 +43,8 @@ Checkpoint("Atomic registry restore and conflict handling");
     ("missing A", null), ("newer A", new(2026, 8, 2)), ("older", new(2024, 10, 1)),
     ("newer B", new(2026, 8, 2)), ("missing B", null)
 ];
-var newest = InstallDateOrder.Sort(datedRows, row => row.Date, ListSortDirection.Descending);
-var oldest = InstallDateOrder.Sort(datedRows, row => row.Date, ListSortDirection.Ascending);
+var newest = SortOrder.KnownFirst(datedRows, row => row.Date, ListSortDirection.Descending);
+var oldest = SortOrder.KnownFirst(datedRows, row => row.Date, ListSortDirection.Ascending);
 Require(newest.Select(row => row.Name).SequenceEqual(["newer A", "newer B", "older", "missing A", "missing B"]) &&
         oldest.Select(row => row.Name).SequenceEqual(["older", "newer A", "newer B", "missing A", "missing B"]),
     "Date sorting should keep unknown dates last and preserve the order of equal dates.");

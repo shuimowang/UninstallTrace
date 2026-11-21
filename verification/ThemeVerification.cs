@@ -56,6 +56,7 @@ internal static class ThemeVerification
             VerifyContrast("Selected row text", text, GetColor("AccentBackgroundBrush"));
             VerifyContrast("Primary button text", GetColor("AccentTextBrush"), GetColor("AccentBrush"));
             VerifyContrast("Disabled button text", GetColor("DisabledTextBrush"), GetColor("DisabledSurfaceBrush"));
+            InventoryLayoutVerification.Run(windows.OfType<MainWindow>().Single());
             VerifyServiceReview();
         }
         finally

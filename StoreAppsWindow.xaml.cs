@@ -130,7 +130,7 @@ public partial class StoreAppsWindow : Window
         var previous = (StoreGrid.SelectedItem as StoreRow)?.App.FullName;
         var query = StoreSearch.Text.Trim();
         var matches = rows.Where(row => (IncludeProtected.IsChecked == true || row.App.CanRemove) && row.Matches(query));
-        var visible = (dateSort is { } direction ? InstallDateOrder.Sort(matches, row => row.App.InstalledOn, direction) : matches).ToArray();
+        var visible = (dateSort is { } direction ? SortOrder.KnownFirst(matches, row => row.App.InstalledOn, direction) : matches).ToArray();
         StoreGrid.ItemsSource = visible;
         StoreDateColumn.SortDirection = dateSort;
         StoreGrid.SelectedItem = visible.FirstOrDefault(row => string.Equals(row.App.FullName, previous, StringComparison.OrdinalIgnoreCase));

@@ -34,6 +34,7 @@ public partial class MainWindow : Window
         this.startInSettings = startInSettings;
         InitializeComponent();
         Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag);
+        DpiChanged += (_, _) => UpdateSizeColumnMinimum();
         switch (Preference)
         {
             case AppLanguage.SimplifiedChinese: ChineseLanguage.IsChecked = true; break;
@@ -46,6 +47,8 @@ public partial class MainWindow : Window
     {
         appSortColumn = previous.appSortColumn;
         appSortDirection = previous.appSortDirection;
+        AppListPane.Width = previous.AppListPane.Width;
+        AppDetailPane.Width = previous.AppDetailPane.Width;
         SearchInput.Text = previous.SearchInput.Text;
         IncludeProtected.IsChecked = previous.IncludeProtected.IsChecked;
         restoredSelection = (previous.AppGrid.SelectedItem as AppRow)?.App.Id;
@@ -168,8 +171,7 @@ public partial class MainWindow : Window
     private async Task RefreshApps()
     {
         SetStatus(Text("正在读取已安装程序…", "Loading installed apps…"));
-        apps = await Task.Run(InstalledApps.Read);
-        ApplyFilter();
+        SetInventory(await Task.Run(InstalledApps.Read));
         SetStatus(Text($"已读取 {apps.Count} 条卸载登记。", $"Loaded {apps.Count} uninstall registrations."));
     }
 
@@ -201,7 +203,8 @@ public partial class MainWindow : Window
             return;
 
         e.Handled = true;
-        var direction = column == AppSortColumn.InstalledOn ? ListSortDirection.Descending : ListSortDirection.Ascending;
+        var direction = column is AppSortColumn.InstalledOn or AppSortColumn.Size
+            ? ListSortDirection.Descending : ListSortDirection.Ascending;
         if (column == appSortColumn)
             direction = appSortDirection == ListSortDirection.Ascending ? ListSortDirection.Descending : ListSortDirection.Ascending;
         SetAppSort(column, direction);
@@ -215,6 +218,26 @@ public partial class MainWindow : Window
         appSortColumn = column;
         appSortDirection = direction;
         ApplyFilter();
+    }
+
+    internal void SetInventory(IReadOnlyList<InstalledApp> inventory)
+    {
+        apps = inventory;
+        UpdateSizeColumnMinimum();
+        ApplyFilter();
+    }
+
+    private void UpdateSizeColumnMinimum()
+    {
+        // WPF Auto measures realized rows. Include off-screen values so scrolling and filtering keep the unit visible.
+        var typeface = new Typeface(AppGrid.FontFamily, AppGrid.FontStyle, AppGrid.FontWeight, AppGrid.FontStretch);
+        var dpi = VisualTreeHelper.GetDpi(AppGrid).PixelsPerDip;
+        var mode = TextOptions.GetTextFormattingMode(AppGrid);
+        var largest = apps.Select(app => FormatSize(app.EstimatedSizeBytes)).Distinct().DefaultIfEmpty("—")
+            .Max(value => new FormattedText(value, Culture, AppGrid.FlowDirection, typeface, AppGrid.FontSize,
+                Brushes.White, null, mode, dpi).WidthIncludingTrailingWhitespace);
+        var padding = (Thickness)FindResource("SizeCellPadding");
+        InventorySizeColumn.MinWidth = Math.Ceiling(largest + padding.Left + padding.Right + 2);
     }
 
     private void ApplyFilter()
@@ -239,10 +262,11 @@ public partial class MainWindow : Window
         var comparer = StringComparer.Create(Culture, ignoreCase: true);
         var ordered = appSortColumn switch
         {
-            AppSortColumn.InstalledOn => InstallDateOrder.Sort(matching, app => app.InstalledOn, appSortDirection),
+            AppSortColumn.InstalledOn => SortOrder.KnownFirst(matching, app => app.InstalledOn, appSortDirection),
             AppSortColumn.Publisher => By(app => app.Publisher, comparer),
             AppSortColumn.Version => By(app => app.Version, comparer),
-            AppSortColumn.Size => By(app => app.EstimatedSizeBytes),
+            AppSortColumn.Size => SortOrder.KnownFirst(matching,
+                app => app.EstimatedSizeBytes is > 0 ? app.EstimatedSizeBytes : null, appSortDirection),
             _ => By(app => app.Name, comparer),
         };
 
@@ -288,17 +312,23 @@ public partial class MainWindow : Window
 
     private void UpdateSelection()
     {
-        if (!initialized)
+        if (!IsInitialized)
             return;
-        var app = (AppGrid.SelectedItem as AppRow)?.App;
+        var row = AppGrid.SelectedItem as AppRow;
+        var app = row?.App;
         AppName.Text = app?.Name ?? Text("选择一个程序", "Select an app");
-        AppPublisher.Text = app is null ? "" : string.Join("  ·  ", new[] { app.Publisher, app.Version }.Where(value => value.Length != 0));
         AppDetails.Visibility = app is null ? Visibility.Collapsed : Visibility.Visible;
         ScanButton.IsEnabled = !busy && app is { IsProtected: false };
         UninstallButton.IsEnabled = false;
-        if (app is null)
+        if (row is null || app is null)
             return;
 
+        var unknown = Text("未登记", "Not reported");
+        AppPublisher.Text = app.Publisher.Length > 0 ? app.Publisher : unknown;
+        AppVersion.Text = app.Version.Length > 0 ? app.Version : unknown;
+        AppSize.Text = app.EstimatedSizeBytes is long bytes && bytes > 0
+            ? row.Size + Environment.NewLine + Text($"{bytes.ToString("N0", Culture)} 字节", $"{bytes.ToString("N0", Culture)} bytes")
+            : unknown;
         var type = app.IsMsi ? "Windows Installer" : Text("桌面程序", "Desktop app");
         var protection = app.IsProtected ? Text("  ·  受保护", "  ·  Protected") : "";
         AppScope.Text = $"{app.Scope}  ·  {type}{protection}" +
@@ -437,12 +467,10 @@ public partial class MainWindow : Window
             SetStatus(Text($"已隔离 {totals.Quarantined} 项，待核对 {totals.Failed} 项。",
                     $"Quarantined {totals.Quarantined} items. {totals.Failed} need review.")
                 + (inPlace == 0 ? "" : Text($"有 {inPlace} 项仍在原位置。", $" {inPlace} remain at their original paths.")));
-            apps = await Task.Run(InstalledApps.Read);
-            ApplyFilter();
+            SetInventory(await Task.Run(InstalledApps.Read));
             return;
         }
-        apps = await Task.Run(InstalledApps.Read);
-        ApplyFilter();
+        SetInventory(await Task.Run(InstalledApps.Read));
         var services = review.RelatedServices is > 0
             ? Text($"另发现 {review.RelatedServices} 条关联服务登记。", $" Found {review.RelatedServices} related service registrations.") : "";
         SetStatus((result.Items.Count == 0 ? Text("未发现可归属的文件或注册表项。", "No attributable files or registry items were found.")
@@ -656,19 +684,29 @@ public partial class MainWindow : Window
         StatusText.Text = workflowStatusPrefix is { Length: > 0 } ? $"{workflowStatusPrefix}  {text}" : text;
     }
 
+    private static readonly string[] SizeUnits = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+
+    private static string FormatSize(long? bytes)
+    {
+        if (bytes is not > 0)
+            return "—";
+        decimal value = bytes.Value;
+        var unit = 0;
+        while (value >= 1024 && unit < SizeUnits.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return $"{value.ToString(unit < 2 ? "0.#" : "0.##", Culture)} {SizeUnits[unit]}";
+    }
+
     private sealed record AppRow(InstalledApp App)
     {
         public string Name => App.Name;
         public string Publisher => App.Publisher.Length == 0 ? "—" : App.Publisher;
         public string Version => App.Version.Length == 0 ? "—" : App.Version;
         public string InstallDate => App.InstalledOn?.ToString("d", Culture) ?? Text("未登记", "Unknown");
-        public string Size => App.EstimatedSizeBytes switch
-        {
-            >= 1L << 30 => $"{App.EstimatedSizeBytes / (double)(1L << 30):0.##} GB",
-            >= 1L << 20 => $"{App.EstimatedSizeBytes / (double)(1L << 20):0.##} MB",
-            > 0 => $"{App.EstimatedSizeBytes / 1024d:0.#} KB",
-            _ => "—"
-        };
+        public string Size => FormatSize(App.EstimatedSizeBytes);
     }
 
     private sealed record SessionRow(CleanupSession Session)
