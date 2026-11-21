@@ -152,7 +152,19 @@ public static class LeftoverScanner
     };
 
     public static LeftoverScanResult Scan(
-        InstalledApp app, IReadOnlyList<InstalledApp> installedApps, CancellationToken cancellationToken = default)
+        InstalledApp app, IReadOnlyList<InstalledApp> installedApps, CancellationToken cancellationToken = default) =>
+        Scan(app, installedApps, null, cancellationToken);
+
+    internal static LeftoverScanResult ScanWithStartupValues(InstalledApp app, IReadOnlyList<InstalledApp> installedApps,
+        Func<RegistryHive, RegistryView, string, IReadOnlyDictionary<string, string?>> startupValues)
+    {
+        ArgumentNullException.ThrowIfNull(startupValues);
+        return Scan(app, installedApps, startupValues, CancellationToken.None);
+    }
+
+    private static LeftoverScanResult Scan(InstalledApp app, IReadOnlyList<InstalledApp> installedApps,
+        Func<RegistryHive, RegistryView, string, IReadOnlyDictionary<string, string?>>? startupValues,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(installedApps);
@@ -163,7 +175,7 @@ public static class LeftoverScanner
                 "This entry is a system component, an update, or marked as protected from removal.")]);
         }
 
-        return new ScanSession(app, installedApps, cancellationToken).Run();
+        return new ScanSession(app, installedApps, cancellationToken, startupValues).Run();
     }
 
     internal static bool StartupCommandStillMatches(string? command, string? expectedExecutable) =>
@@ -243,16 +255,19 @@ public static class LeftoverScanner
         private readonly string[] _otherLocations;
         private readonly string[] _otherExecutables;
         private readonly bool _ambiguousName;
+        private readonly Func<RegistryHive, RegistryView, string, IReadOnlyDictionary<string, string?>>? _startupValues;
         private readonly Dictionary<string, LeftoverItem> _items = new(PathComparer);
         private readonly HashSet<string> _warnings = new(StringComparer.Ordinal);
         private string? _installationCandidate;
         private string? _ownedLocation;
         private string? _iconInferredLocation;
 
-        public ScanSession(InstalledApp app, IReadOnlyList<InstalledApp> installedApps, CancellationToken cancellationToken)
+        public ScanSession(InstalledApp app, IReadOnlyList<InstalledApp> installedApps, CancellationToken cancellationToken,
+            Func<RegistryHive, RegistryView, string, IReadOnlyDictionary<string, string?>>? startupValues = null)
         {
             _app = app;
             _cancellationToken = cancellationToken;
+            _startupValues = startupValues;
             _names = IdentityNames(app);
             var publisher = Identity(app.Publisher);
             _publisher = publisher.Length > 2 && !_names.Contains(publisher)
@@ -581,24 +596,35 @@ public static class LeftoverScanner
 
         private void ScanStartup(RegistryKey root, RegistryHive hive, RegistryView view, string path)
         {
-            ReadRegistry(root, path, key =>
+            if (_startupValues is not null)
             {
-                foreach (var name in key.GetValueNames())
-                {
-                    _cancellationToken.ThrowIfCancellationRequested();
-                    if (string.IsNullOrEmpty(name))
-                    {
-                        continue;
-                    }
+                var values = _startupValues(hive, view, path);
+                ScanStartupValues(hive, view, path, values.Keys, name => values[name]);
+                return;
+            }
 
-                    var executable = ReadCommandExecutable(key.GetValue(name) as string);
-                    if (OwnsExecutable(executable, allowCorroboratedStartupIcon: true))
-                    {
-                        Add(new LeftoverItem(LeftoverKind.RegistryValue, path, LeftoverEvidence.StartupCommand,
-                            LeftoverConfidence.Strong, hive, view, name, evidencePath: executable));
-                    }
+            ReadRegistry(root, path, key =>
+                ScanStartupValues(hive, view, path, key.GetValueNames(), name => key.GetValue(name) as string));
+        }
+
+        private void ScanStartupValues(RegistryHive hive, RegistryView view, string path, IEnumerable<string> names,
+            Func<string, string?> readValue)
+        {
+            foreach (var name in names)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrEmpty(name))
+                {
+                    continue;
                 }
-            });
+
+                var executable = ReadCommandExecutable(readValue(name));
+                if (OwnsExecutable(executable, allowCorroboratedStartupIcon: true))
+                {
+                    Add(new LeftoverItem(LeftoverKind.RegistryValue, path, LeftoverEvidence.StartupCommand,
+                        LeftoverConfidence.Strong, hive, view, name, evidencePath: executable));
+                }
+            }
         }
 
         private void ScanShortcuts()

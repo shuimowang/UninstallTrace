@@ -173,18 +173,17 @@ internal static class ScannerOwnershipVerification
             "The localized installer fixture needs fresh settings and non-existent startup executables.");
         Require(LeftoverScanner.TryValidateFileSystemTarget(installPath, out _),
             "The verification application needs to run from an unprotected local development directory.");
-        // Fresh Windows profiles can lack this standard key. Cleanup removes only our unique values.
-        using var startup = Registry.CurrentUser.CreateSubKey(runPath, writable: true);
-        Require(startup.GetValue(runName) is null && startup.GetValue(siblingRunName) is null,
-            "The startup fixture must only use new registry value names.");
+        var startupValues = new Dictionary<string, string?>
+        {
+            [runName] = $"\"{executable}\" --silence",
+            [siblingRunName] = $"\"{siblingExecutable}\" --silence"
+        };
+        var emptyStartupValues = new Dictionary<string, string?>();
 
         try
         {
             Directory.CreateDirectory(settingsPath);
-            startup.SetValue(runName, $"\"{executable}\" --silence", RegistryValueKind.String);
-            startup.SetValue(siblingRunName, $"\"{siblingExecutable}\" --silence", RegistryValueKind.String);
-
-            var scan = LeftoverScanner.Scan(app, [app]);
+            var scan = ScanFixture(app, [app]);
             Require(scan.Items.Any(item => IsDirectory(item, settingsPath) && item is
                 { Confidence: LeftoverConfidence.Possible, EvidenceKind: LeftoverEvidence.CorroboratedInstallerName }),
                 "The exact localized version suffix can corroborate the app's name in an independent profile directory.");
@@ -206,10 +205,13 @@ internal static class ScannerOwnershipVerification
         }
         finally
         {
-            startup.DeleteValue(runName, throwOnMissingValue: false);
-            startup.DeleteValue(siblingRunName, throwOnMissingValue: false);
             DeleteEmptyDirectory(settingsPath);
         }
+
+        LeftoverScanResult ScanFixture(InstalledApp selected, InstalledApp[] inventory) =>
+            LeftoverScanner.ScanWithStartupValues(selected, inventory, (hive, view, path) =>
+                hive == RegistryHive.CurrentUser && view == RegistryView.Default
+                && string.Equals(path, runPath, StringComparison.OrdinalIgnoreCase) ? startupValues : emptyStartupValues);
 
         bool IsRunValue(LeftoverItem item, string name) => item.Kind == LeftoverKind.RegistryValue
             && item.Hive == RegistryHive.CurrentUser && string.Equals(item.Target, runPath, StringComparison.OrdinalIgnoreCase)
@@ -217,7 +219,7 @@ internal static class ScannerOwnershipVerification
 
         void RequireExcluded(InstalledApp selected, InstalledApp[] inventory, string message)
         {
-            var scan = LeftoverScanner.Scan(selected, inventory);
+            var scan = ScanFixture(selected, inventory);
             Require(scan.Items.All(item => !IsDirectory(item, settingsPath) && !IsRunValue(item, runName) && !IsRunValue(item, siblingRunName)), message);
         }
     }
