@@ -43,7 +43,12 @@ internal static class PortableUpdateVerification
 
             using (File.Open(target, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                Expect<IOException>(() => Apply(nextHash, Restart));
+                try
+                {
+                    Apply(nextHash, Restart);
+                    throw new InvalidOperationException("Replacing a locked executable should fail.");
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
                 Require(File.ReadAllBytes(target).SequenceEqual(original) && restarts == 0, "An in-use target stays runnable after failure.");
             }
 
