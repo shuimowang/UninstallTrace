@@ -24,7 +24,11 @@ internal static class InventoryLayoutVerification
             (Fixture("Platform", 3L << 30, command), "GB"),
             (Fixture("Library", 7L << 40, command), "TB"),
             (Fixture("Archive", 5L << 50, command), "PB"),
-            (Fixture("Full application name for the selected program's details", long.MaxValue, command), "EB"),
+            (Fixture("Full application name for the selected program's details", long.MaxValue, command) with
+            {
+                Publisher = "A long publisher name with its complete details intact",
+                Version = "2026.11.21.10051112131415161718192021222324252627282930"
+            }, "EB"),
             (Fixture("No size supplied", null, command), null),
         }.ToDictionary(row => row.App.Name, StringComparer.Ordinal);
 
@@ -32,12 +36,16 @@ internal static class InventoryLayoutVerification
         var content = (FrameworkElement)window.Content;
         var grid = Named<DataGrid>(window, "AppGrid");
         var name = grid.Columns.Single(column => column.SortMemberPath == "Name");
+        var publisher = grid.Columns.Single(column => column.SortMemberPath == "Publisher");
+        var version = grid.Columns.Single(column => column.SortMemberPath == "Version");
+        var date = grid.Columns.Single(column => column.SortMemberPath == "InstalledOn");
         var size = grid.Columns.Single(column => column.SortMemberPath == "Size");
         var height = window.Height - SystemParameters.CaptionHeight - 2 * SystemParameters.ResizeFrameHorizontalBorderHeight;
         var frameWidth = 2 * SystemParameters.ResizeFrameVerticalBorderWidth;
         var minimum = new Size(window.MinWidth - frameWidth, height);
         var normal = new Size(window.Width - frameWidth, height);
         var expanded = new Size(window.Width * 1.25 - frameWidth, height);
+        var largestApp = apps.Values.Single(row => row.App.EstimatedSizeBytes == long.MaxValue).App;
 
         foreach (var (label, bounds) in new[] { ("minimum", minimum), ("default", normal), ("expanded", expanded) })
         {
@@ -50,19 +58,33 @@ internal static class InventoryLayoutVerification
                 if (row.Unit is { } unit)
                     Require(text.Text.EndsWith(" " + unit, StringComparison.Ordinal), $"Expected {unit} in the size cell at {label} width.");
                 RequireFits(text, grid, label);
+                RequireFits(CellText(date, item), grid, label);
             }
+
+            var longItem = grid.Items.Cast<object>().Single(item => CellText(name, item).Text == largestApp.Name);
+            RequireFullWrappedText(CellText(name, longItem), largestApp.Name, label);
+            RequireFullWrappedText(CellText(publisher, longItem), largestApp.Publisher, label);
+            RequireFullWrappedText(CellText(version, longItem), largestApp.Version, label);
+
+            var compactItem = grid.Items.Cast<object>().Single(item => CellText(name, item).Text == "Small");
+            var compactRow = (DataGridRow)grid.ItemContainerGenerator.ContainerFromItem(compactItem);
+            var wrappedRow = (DataGridRow)grid.ItemContainerGenerator.ContainerFromItem(longItem);
+            Require(compactRow.ActualHeight <= grid.MinRowHeight + 1 && wrappedRow.ActualHeight > compactRow.ActualHeight,
+                $"The inventory must grow wrapped rows and keep short rows compact at {label} width.");
         }
 
         Layout(content, minimum);
-        var largestName = apps.Values.Single(row => row.App.EstimatedSizeBytes == long.MaxValue).App.Name;
-        var largest = grid.Items.Cast<object>().Single(item => CellText(name, item).Text == largestName);
+        var largest = grid.Items.Cast<object>().Single(item => CellText(name, item).Text == largestApp.Name);
         grid.SelectedItem = largest;
         Layout(content, minimum);
-        VerifyDetails(window, apps[largestName].App, CellText(size, largest).Text, command);
+        VerifyDetails(window, largestApp, CellText(size, largest).Text, command);
 
-        var sort = SizeHeaderInvokeProvider(grid, size);
+        var sort = HeaderInvokeProvider(grid, size);
         VerifySort(ListSortDirection.Descending);
         VerifySort(ListSortDirection.Ascending);
+        VerifySortLabels(window, minimum);
+        VerifyTranslatedSortLabels(minimum, command);
+        VerifyVirtualization(window, minimum, command);
 
         void VerifySort(ListSortDirection direction)
         {
@@ -81,11 +103,12 @@ internal static class InventoryLayoutVerification
     private static InstalledApp Fixture(string name, long? bytes, string command) => new()
     {
         Name = name,
-        Version = "2026.11.21.1005 (full version information)",
-        Publisher = "A long publisher name with its complete details intact",
+        Version = "1.2.3",
+        Publisher = "Acme",
         InstallLocation = @"C:\Program Files\UninstallTrace layout fixture\nested folder that must remain selectable",
         UninstallString = command,
         EstimatedSizeBytes = bytes,
+        InstalledOn = new DateTime(2026, 11, 21),
         RegistryPath = $@"{InstalledApps.UninstallRegistryPath}\{name}",
     };
 
@@ -115,23 +138,112 @@ internal static class InventoryLayoutVerification
 
     private static void RequireFits(TextBlock text, DataGrid grid, string label)
     {
-        Require(text.Text.Length > 0, $"The size was blank at {label} width.");
-        var pixelsPerDip = VisualTreeHelper.GetDpi(text).PixelsPerDip;
-        var tolerance = 1 / pixelsPerDip;
-        var measured = new FormattedText(text.Text, DeepUninstaller.Localization.Culture, text.FlowDirection,
-            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch), text.FontSize, text.Foreground,
-            null, TextOptions.GetTextFormattingMode(text), pixelsPerDip).WidthIncludingTrailingWhitespace;
+        Require(text.Text.Length > 0, $"A number cell was blank at {label} width.");
+        var tolerance = 1 / VisualTreeHelper.GetDpi(text).PixelsPerDip;
+        var measured = MeasureText(text).WidthIncludingTrailingWhitespace;
         var contentWidth = text.ActualWidth - text.Padding.Left - text.Padding.Right;
         Require(measured <= contentWidth + tolerance,
-            $"The size '{text.Text}' outgrew its {contentWidth:0.0}-DIP cell at {label} width.");
+            $"The value '{text.Text}' outgrew its {contentWidth:0.0}-DIP cell at {label} width.");
 
         var viewport = VisualAncestors(text).OfType<ScrollContentPresenter>().FirstOrDefault() as FrameworkElement ?? grid;
         var rightAlignedStart = text.ActualWidth - text.Padding.Right - measured;
-        Require(text.TextAlignment == TextAlignment.Right, "The estimated sizes must use a consistent right alignment.");
+        Require(text.TextAlignment == TextAlignment.Right, "The date and size columns must use a consistent right alignment.");
         var start = text.TranslatePoint(new Point(rightAlignedStart, 0), viewport).X;
         Require(start >= -tolerance && start + measured <= viewport.ActualWidth + tolerance,
-            $"The size '{text.Text}' is outside the visible grid viewport at {label} width.");
+            $"The value '{text.Text}' is outside the visible grid viewport at {label} width.");
     }
+
+    private static void RequireFullWrappedText(TextBlock text, string expected, string label)
+    {
+        Require(text.Text == expected && text.TextWrapping == TextWrapping.Wrap && text.TextTrimming == TextTrimming.None,
+            $"Inventory text must be complete, wrap, and preserve unbroken text at {label} width.");
+        var metrics = MeasureText(text);
+        metrics.MaxTextWidth = text.ActualWidth - text.Padding.Left - text.Padding.Right;
+        metrics.Trimming = TextTrimming.None;
+        var tolerance = 1 / VisualTreeHelper.GetDpi(text).PixelsPerDip;
+        var row = VisualAncestors(text).OfType<DataGridRow>().First();
+        var position = text.TranslatePoint(new Point(0, 0), row);
+        Require(metrics.Height + text.Padding.Top + text.Padding.Bottom <= text.ActualHeight + tolerance
+            && position.Y >= -tolerance && position.Y + text.ActualHeight <= row.ActualHeight + tolerance,
+            $"A wrapped inventory cell was vertically clipped at {label} width.");
+    }
+
+    private static void VerifySortLabels(MainWindow window, Size bounds)
+    {
+        var content = (FrameworkElement)window.Content;
+        var selector = Named<ComboBox>(window, "AppSortSelector");
+        var grid = Named<DataGrid>(window, "AppGrid");
+        for (var index = 0; index < 4; index++)
+        {
+            selector.SelectedIndex = index;
+            Layout(content, bounds);
+            RequireSelectedLabelFits(selector);
+        }
+
+        foreach (var member in new[] { "Publisher", "Version", "Size" })
+        {
+            var column = grid.Columns.Single(candidate => candidate.SortMemberPath == member);
+            var sort = HeaderInvokeProvider(grid, column);
+            foreach (var _ in new[] { ListSortDirection.Ascending, ListSortDirection.Descending })
+            {
+                sort.Invoke();
+                Layout(content, bounds);
+                Require(selector.SelectionBoxItem is string label && label.Contains(column.Header.ToString()!)
+                    && (label.EndsWith('↑') || label.EndsWith('↓')), "The selected sort label must include its field and direction.");
+                RequireSelectedLabelFits(selector);
+            }
+        }
+    }
+
+    private static void RequireSelectedLabelFits(ComboBox selector)
+    {
+        var label = (string)selector.SelectionBoxItem;
+        var text = VisualDescendants(selector).OfType<TextBlock>().Single(candidate => candidate.Text == label);
+        var presenter = VisualAncestors(text).OfType<ContentPresenter>().First();
+        var left = text.TranslatePoint(new Point(text.Padding.Left, 0), presenter).X;
+        var measured = MeasureText(text).WidthIncludingTrailingWhitespace;
+        var tolerance = 1 / VisualTreeHelper.GetDpi(text).PixelsPerDip;
+        Require(measured <= text.ActualWidth - text.Padding.Left - text.Padding.Right + tolerance
+            && left + measured <= presenter.ActualWidth + tolerance,
+            $"The selected sort label '{label}' is clipped.");
+    }
+
+    private static void VerifyTranslatedSortLabels(Size bounds, string command)
+    {
+        var alternate = DeepUninstaller.Localization.Current == AppLanguage.English
+            ? AppLanguage.SimplifiedChinese : AppLanguage.English;
+        var original = DeepUninstaller.Localization.Preference;
+        var setPreference = typeof(DeepUninstaller.Localization).GetProperty(nameof(DeepUninstaller.Localization.Preference))!
+            .GetSetMethod(nonPublic: true)!;
+        try
+        {
+            // The second window uses the other locale without saving any settings to disk.
+            setPreference.Invoke(null, [alternate]);
+            var window = new MainWindow();
+            try
+            {
+                window.SetInventory([Fixture("Translation layout fixture", 1024, command)]);
+                VerifySortLabels(window, bounds);
+            }
+            finally { window.Close(); }
+        }
+        finally { setPreference.Invoke(null, [original]); }
+    }
+
+    private static void VerifyVirtualization(MainWindow window, Size bounds, string command)
+    {
+        const int rowCount = 160;
+        window.SetInventory(Enumerable.Range(1, rowCount).Select(index => Fixture($"Inventory fixture {index}", index, command)).ToArray());
+        Layout((FrameworkElement)window.Content, bounds);
+        var grid = Named<DataGrid>(window, "AppGrid");
+        var realized = VisualDescendants(grid).OfType<DataGridRow>().Count();
+        Require(grid.Items.Count == rowCount && realized is > 0 and < rowCount,
+            "The inventory must virtualize offscreen rows when row heights are automatic.");
+    }
+
+    private static FormattedText MeasureText(TextBlock text) => new(text.Text, DeepUninstaller.Localization.Culture, text.FlowDirection,
+        new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch), text.FontSize, text.Foreground,
+        null, TextOptions.GetTextFormattingMode(text), VisualTreeHelper.GetDpi(text).PixelsPerDip);
 
     private static void Layout(FrameworkElement content, Size bounds)
     {
@@ -141,12 +253,12 @@ internal static class InventoryLayoutVerification
         content.UpdateLayout();
     }
 
-    private static IInvokeProvider SizeHeaderInvokeProvider(DataGrid grid, DataGridColumn column)
+    private static IInvokeProvider HeaderInvokeProvider(DataGrid grid, DataGridColumn column)
     {
         var owner = VisualDescendants(grid).OfType<DataGridColumnHeadersPresenter>().Single();
         var peer = new DataGridColumnHeaderItemAutomationPeer(column.Header, column, new DataGridColumnHeadersPresenterAutomationPeer(owner));
         return peer.GetPattern(PatternInterface.Invoke) as IInvokeProvider
-            ?? throw new InvalidOperationException("The Size header does not expose its sorting action.");
+            ?? throw new InvalidOperationException($"The '{column.SortMemberPath}' header does not expose its sorting action.");
     }
 
     private static TextBlock CellText(DataGridColumn column, object item) => column.GetCellContent(item) as TextBlock

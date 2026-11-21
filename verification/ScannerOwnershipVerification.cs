@@ -11,7 +11,6 @@ internal static class ScannerOwnershipVerification
         VerifySharedCommands(Path.Combine(productRoot, token), token);
         VerifyNameVariants(productRoot, token);
         VerifyCorroboratedInstallerName(productRoot, token);
-        VerifyLocalizedInstallerVersionAndStartup(productRoot, token);
     }
 
     private static void VerifySharedCommands(string root, string token)
@@ -151,10 +150,12 @@ internal static class ScannerOwnershipVerification
         RegistryPath = $@"{InstalledApps.UninstallRegistryPath}\{name}"
     };
 
-    private static void VerifyLocalizedInstallerVersionAndStartup(string localRoot, string token)
+    internal static void RunStartupCases()
     {
         const string runPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string version = "4.5.11";
+        var localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var token = $"UninstallTrace-OwnershipVerification-{Guid.NewGuid():N}";
         var verificationDirectory = Path.GetDirectoryName(typeof(ScannerOwnershipVerification).Assembly.Location)!;
         var installPath = Path.Combine(verificationDirectory, $"{token}-Install", token);
         var executable = Path.Combine(installPath, "Downloader.exe");

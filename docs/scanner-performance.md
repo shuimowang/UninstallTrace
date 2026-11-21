@@ -13,7 +13,7 @@ The optimized scanner checks path ownership by string comparison before asking W
 
 同一批登记、每版 480 次预热后扫描，中位耗时下降约 42%。这是单机抽样，测量的是桌面残留扫描，包含启动、原厂卸载或隔离的整个流程有不同的耗时。
 
-To repeat, build each engine against the same [benchmark harness](../verification/ScannerBenchmark.cs). Run the baseline, then pass its report into the other build to replay the same inventory and sample. The report contains sample ordinals, timings and hashes.
+The full scanner reads Windows startup data, so run the benchmark on a disposable GitHub-hosted Windows VM. For a paired measurement, build both engines with the same [benchmark harness](../verification/ScannerBenchmark.cs) in one job. Run the baseline, then pass its report into the other build to replay the same inventory and sample. The report contains sample ordinals, timings and hashes. The [Windows verification workflow](../.github/workflows/windows.yml) shows the disposable-runner environment marker and offers a single-build benchmark when manually dispatched.
 
 ```powershell
 dotnet $baselineVerificationDll --benchmark-scan 10 > baseline.json

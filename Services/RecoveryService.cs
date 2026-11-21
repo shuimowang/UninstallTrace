@@ -59,6 +59,9 @@ public sealed class CleanupSession
     public InstalledApp? App { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
     public required List<CleanupEntry> Entries { get; init; }
+
+    [JsonIgnore]
+    public bool CanRemoveRecord { get; internal set; }
 }
 
 public sealed record RegistryTree(RegistryData[] Values, Dictionary<string, RegistryTree> Children);
@@ -187,6 +190,7 @@ public sealed class RecoveryService
                 Quarantine(session, entry);
             }, CleanupState.Quarantined);
         }
+        InspectRecord(session);
         return session;
     }
 
@@ -200,6 +204,7 @@ public sealed class RecoveryService
                 continue;
             ExecuteEntry(session, entry, () => RestoreEntry(session, entry), CleanupState.Restored);
         }
+        InspectRecord(session);
         return session;
     }
 
@@ -218,7 +223,21 @@ public sealed class RecoveryService
                 entry.RegistryBackup = null;
             }, CleanupState.Discarded);
         }
+        InspectRecord(session);
         return session;
+    }
+
+    public void RemoveRecord(Guid id)
+    {
+        using var operationLock = EnterOperation();
+        var session = Load(id);
+        if (!session.CanRemoveRecord)
+            throw new RecoveryIOException("此记录仍含恢复副本，或暂时无法核对隔离位置。记录已保留。",
+                "Recovery copies still exist, or the quarantine location could not be verified. The record was kept.");
+
+        var path = JournalPath(id);
+        EnsurePlainPath(path);
+        File.Delete(path);
     }
 
     private FileStream EnterOperation()
@@ -255,7 +274,6 @@ public sealed class RecoveryService
             entry.LocalizedNote = (exception as RecoveryIOException)?.Details;
         }
         Save(session);
-        InspectCopy(session, entry);
     }
 
     private void Quarantine(CleanupSession session, CleanupEntry entry)
@@ -473,18 +491,50 @@ public sealed class RecoveryService
         if (session is null || session.Id != id || session.Entries is null ||
             session.Entries.Any(entry => entry?.Item is null || !Enum.IsDefined(entry.Item.Kind)))
             throw new RecoveryIOException("恢复记录无效。", "The recovery record is invalid.");
-        foreach (var entry in session.Entries)
-            InspectCopy(session, entry);
+        InspectRecord(session);
         return session;
     }
 
-    private void InspectCopy(CleanupSession session, CleanupEntry entry)
+    private void InspectRecord(CleanupSession session)
+    {
+        var vaultFolders = new HashSet<string>(PathComparer) { VaultFolder(Path.Combine(storageRoot, "files"), session.Id) };
+        foreach (var entry in session.Entries)
+            InspectCopy(session, entry, vaultFolders);
+
+        session.CanRemoveRecord = session.Entries.Count > 0
+            && session.Entries.All(entry => entry.Id != Guid.Empty && Enum.IsDefined(entry.State) &&
+                entry.RegistryBackup is null && entry.CopyStatus == RecoveryCopyStatus.Missing)
+            && session.Entries.Select(entry => entry.Id).Distinct().Count() == session.Entries.Count
+            && VaultFoldersAreEmpty(vaultFolders);
+    }
+
+    private static bool VaultFoldersAreEmpty(IEnumerable<string> vaultFolders)
+    {
+        try
+        {
+            foreach (var folder in vaultFolders)
+            {
+                EnsurePlainPath(folder);
+                if (GetAttributes(folder) is { } attributes &&
+                    (!attributes.HasFlag(FileAttributes.Directory) || Directory.EnumerateFileSystemEntries(folder).Any()))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception exception) when (IsEntryFailure(exception))
+        {
+            return false;
+        }
+    }
+
+    private void InspectCopy(CleanupSession session, CleanupEntry entry, ISet<string>? vaultFolders = null)
     {
         entry.CopyStatus = RecoveryCopyStatus.Unverified;
         entry.OriginalPathPresent = false;
         entry.CopyCheckError = null;
-        if (entry.State is CleanupState.Restored or CleanupState.Skipped or CleanupState.Discarded)
-            return;
 
         if (!IsFileSystem(entry.Item))
         {
@@ -495,6 +545,7 @@ public sealed class RecoveryService
         try
         {
             var vaultPath = QuarantinePath(session, entry);
+            vaultFolders?.Add(Path.GetDirectoryName(vaultPath)!);
             EnsurePlainPath(vaultPath);
             if (GetAttributes(vaultPath) is { } attributes)
             {
@@ -579,8 +630,10 @@ public sealed class RecoveryService
         var storage = PathComparer.Equals(Path.GetPathRoot(original), Path.GetPathRoot(storageRoot))
             ? Path.Combine(storageRoot, "files")
             : Path.Combine(Path.GetDirectoryName(original)!, ".DeepUninstaller-Recovery");
-        return Path.Combine(storage, session.Id.ToString("N"), entry.Id.ToString("N"));
+        return Path.Combine(VaultFolder(storage, session.Id), entry.Id.ToString("N"));
     }
+
+    private static string VaultFolder(string storage, Guid id) => Path.Combine(storage, id.ToString("N"));
 
     private void ValidateOriginal(string target)
     {

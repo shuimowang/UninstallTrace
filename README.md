@@ -11,9 +11,11 @@ UninstallTrace runs the original Windows uninstaller, checks what it left behind
 3. Choose **Run uninstaller** to start the original remover or **Scan for leftovers** to inspect a damaged or stale registration. Use **Scan removed app** for a program missing from the list.
 4. Check the location and evidence for the leftovers you want to quarantine. Open **Cleanup recovery** to restore the files and registry entries from a cleanup before discarding its backups. To use the removed program again, reinstall it with its installer or through the Store.
 
-Click **Size** to see the largest reported sizes first. Estimates come from the installer. A dash means the size is unknown and sorts last in either direction. Drag the divider to resize the list and details. Select a program to see its reported byte count and copy the full version, path or uninstall command from the details pane.
+Long names, publishers and versions wrap in the installed apps list. Drag the divider to resize the list and details. Click **Size** to see the largest reported sizes first. A dash means the size is unknown and sorts last in either direction. Select a program to see its reported byte count and copy the full version, path or uninstall command from the details pane.
 
-If quarantine fails because an item is in use, **Cleanup recovery** checks its original location and the recovery copy. Restore and permanent deletion are unavailable for a missing copy. Close the program using the file and run a fresh scan from the record. For older records, use **View uninstall history → Resume leftover scan**.
+**Cleanup recovery** opens with recoverable and unresolved records. Select **Show finished records** to include older records. Select a row and choose **Delete record** to remove its journal after the app confirms its quarantine is empty. Records with copies remain available for restore or permanent disposal.
+
+If quarantine fails because an item is in use, close the program using the file and run a fresh scan from the record. For older records, use **View uninstall history → Resume leftover scan**.
 
 The language setting supports English, Simplified Chinese, and automatic selection from Windows. **Batch uninstall** runs vendor removers sequentially, reviews leftovers per program, and pauses when a result needs attention. **Uninstall history** lets you resume a scan later or after a restart.
 
@@ -31,9 +33,9 @@ Name matches alone require a manual selection. The recovery vault covers the fil
 
 ## Build and verify
 
-Use the .NET 10 SDK on Windows. The integration harness uses temporary files and current-user registry fixtures to test scanning, ownership checks, quarantine, and restoration.
+Use the .NET 10 SDK on Windows. Default local verification checks the UI and in-memory sorting. For UI-only checks, run `dotnet run --project verification/DeepUninstaller.Verification.csproj -c Release -- --verify-ui`.
 
-For UI-only checks, run `dotnet run --project verification/DeepUninstaller.Verification.csproj -c Release -- --verify-ui`. Local startup ownership tests use in-memory values. The real-app startup integration test runs on a disposable hosted VM.
+The [Windows verification workflow](.github/workflows/windows.yml) runs integration fixtures and all startup cases, including mocked startup data, on disposable GitHub-hosted Windows VMs. The complete scanner reads startup data, so its benchmark also runs there. Enable the benchmark when manually dispatching the workflow.
 
 The [real Windows uninstall checks](.github/workflows/real-apps.yml) use separate disposable Windows machines for Ghost Downloader, SumatraPDF and WinMerge. They compare two scanners on the same post-uninstall state and verify quarantine and restoration against known files, registry data and shared-folder controls. [Method and results](docs/uninstall-verification.md)
 

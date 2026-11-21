@@ -14,6 +14,8 @@ public partial class MainWindow : Window
 {
     private readonly RecoveryService recovery = new();
     private IReadOnlyList<InstalledApp> apps = [];
+    private IReadOnlyList<SessionRow> recoveryRows = [];
+    private IReadOnlyList<string> recoveryWarnings = [];
     private readonly bool startInSettings;
     private bool busy;
     private bool initialized;
@@ -49,6 +51,7 @@ public partial class MainWindow : Window
         appSortDirection = previous.appSortDirection;
         AppListPane.Width = previous.AppListPane.Width;
         AppDetailPane.Width = previous.AppDetailPane.Width;
+        ShowCompletedHistory.IsChecked = previous.ShowCompletedHistory.IsChecked;
         SearchInput.Text = previous.SearchInput.Text;
         IncludeProtected.IsChecked = previous.IncludeProtected.IsChecked;
         restoredSelection = (previous.AppGrid.SelectedItem as AppRow)?.App.Id;
@@ -154,6 +157,8 @@ public partial class MainWindow : Window
 
     private void SetView(MainView view)
     {
+        if (view != currentView)
+            SetStatus(view == MainView.Apps ? InventoryStatus() : "");
         currentView = view;
         AppsView.Visibility = view == MainView.Apps ? Visibility.Visible : Visibility.Collapsed;
         AttemptsView.Visibility = view == MainView.Attempts ? Visibility.Visible : Visibility.Collapsed;
@@ -172,8 +177,10 @@ public partial class MainWindow : Window
     {
         SetStatus(Text("正在读取已安装程序…", "Loading installed apps…"));
         SetInventory(await Task.Run(InstalledApps.Read));
-        SetStatus(Text($"已读取 {apps.Count} 条卸载登记。", $"Loaded {apps.Count} uninstall registrations."));
+        SetStatus(InventoryStatus());
     }
+
+    private string InventoryStatus() => Text($"已读取 {apps.Count} 条卸载登记。", $"Loaded {apps.Count} uninstall registrations.");
 
     private void OnFilterChanged(object sender, RoutedEventArgs e)
     {
@@ -527,18 +534,45 @@ public partial class MainWindow : Window
         SetStatus(Text("正在读取清理恢复记录…", "Loading cleanup recovery records…"));
         var warnings = new List<string>();
         var history = await Task.Run(() => recovery.ReadHistory(warnings.Add));
-        var rows = history.Select(session => new SessionRow(session)).ToArray();
+        SetRecoveryHistory(history, warnings, selected);
+    }
+
+    internal void SetRecoveryHistory(IReadOnlyList<CleanupSession> history, IReadOnlyList<string> warnings, Guid? selected = null)
+    {
+        recoveryRows = history.Select(session => new SessionRow(session)).ToArray();
+        recoveryWarnings = warnings;
+        ApplyHistoryFilter(selected);
+    }
+
+    private void OnHistoryFilterChanged(object sender, RoutedEventArgs e)
+    {
+        if (IsInitialized && !busy)
+            ApplyHistoryFilter((HistoryGrid.SelectedItem as SessionRow)?.Session.Id);
+    }
+
+    private void ApplyHistoryFilter(Guid? selected)
+    {
+        var finished = recoveryRows.Count(row => row.IsFinished);
+        var showAll = ShowCompletedHistory.IsChecked == true;
+        var rows = recoveryRows.Where(row => showAll || !row.IsFinished).ToArray();
+        ShowCompletedHistory.Content = finished == 0 ? Text("显示已结束记录", "Show finished records") :
+            Text($"显示已结束记录（{finished}）", $"Show finished records ({finished})");
         HistoryGrid.ItemsSource = rows;
         HistoryGrid.SelectedItem = rows.FirstOrDefault(row => row.Session.Id == selected) ?? rows.FirstOrDefault();
         HistoryEmpty.Visibility = rows.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SetStatus(warnings.Count == 0 ? Text($"{rows.Length} 次清理记录。", $"{rows.Length} cleanup sessions.") :
-            Text($"{rows.Length} 次清理记录。部分记录无法读取，详情可从状态提示查看。", $"{rows.Length} cleanup sessions. Some records could not load. Hover over this status for details."));
-        StatusText.ToolTip = warnings.Count == 0 ? null : string.Join("\n", warnings);
+        HistoryTables.Visibility = rows.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        HistoryEmpty.Text = finished > 0 && !showAll
+            ? Text("没有待处理的清理记录。勾选「显示已结束记录」可查看或删除旧记录。", "No pending cleanups. Select Show finished records to view or delete old records.")
+            : Text("没有清理记录。", "No cleanup records.");
+        UpdateHistoryButtons();
+        var count = Text($"当前显示 {rows.Length} 条清理记录。", $"Showing {rows.Length} cleanup records.");
+        SetStatus(recoveryWarnings.Count == 0 ? count : count + Text("部分记录无法读取，详情请查看状态提示。", " Some records could not load. Hover over this status for details."));
+        StatusText.ToolTip = recoveryWarnings.Count == 0 ? null : string.Join("\n", recoveryWarnings);
     }
 
     private void OnSessionSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (!initialized)
+        if (!IsInitialized)
             return;
         var row = HistoryGrid.SelectedItem as SessionRow;
         EntryGrid.ItemsSource = row?.Session.Entries.Select(entry => new EntryRow(entry)).ToArray();
@@ -548,12 +582,35 @@ public partial class MainWindow : Window
     private void UpdateHistoryButtons()
     {
         var row = HistoryGrid.SelectedItem as SessionRow;
+        RestoreButton.Visibility = row?.CanRestore == true ? Visibility.Visible : Visibility.Collapsed;
+        DiscardButton.Visibility = row?.CanDiscard == true ? Visibility.Visible : Visibility.Collapsed;
         RestoreButton.IsEnabled = !busy && row?.CanRestore == true;
         DiscardButton.IsEnabled = !busy && row?.CanDiscard == true;
+        RemoveHistoryButton.Visibility = row?.Session.CanRemoveRecord == true ? Visibility.Visible : Visibility.Collapsed;
+        RemoveHistoryButton.IsEnabled = !busy && row?.Session.CanRemoveRecord == true;
+        ShowCompletedHistory.IsEnabled = !busy;
         RecoveryRescanButton.Visibility = row?.CanRescan == true ? Visibility.Visible : Visibility.Collapsed;
         RecoveryRescanButton.Content = row?.Session.App is null
             ? Text("查看卸载记录", "View uninstall history") : Text("重新扫描残留", "Scan leftovers again");
         RecoveryRescanButton.IsEnabled = !busy;
+    }
+
+    private async void OnRemoveHistoryRecord(object sender, RoutedEventArgs e)
+    {
+        if (busy || HistoryGrid.SelectedItem is not SessionRow { Session.CanRemoveRecord: true } row)
+            return;
+        var name = row.Session.AppName;
+        if (UiPrompt.Show(this,
+                Text($"删除「{name}」于 {row.Time} 的这条清理记录？此记录没有恢复副本，删除后无法撤销。",
+                    $"Delete the cleanup record for {name} from {row.Time}? This record has no recovery copies. Deletion is permanent."),
+                Text("删除清理记录", "Delete cleanup record"), MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel) != MessageBoxResult.OK)
+            return;
+        await RunBusy(async () =>
+        {
+            try { await Task.Run(() => recovery.RemoveRecord(row.Session.Id)); }
+            finally { await RefreshHistory(); }
+            SetStatus(Text($"已删除「{name}」的这条清理记录。", $"Deleted the cleanup record for {name}."));
+        });
     }
 
     private async void OnRecoveryRescan(object sender, RoutedEventArgs e)
@@ -711,6 +768,7 @@ public partial class MainWindow : Window
 
     private sealed record SessionRow(CleanupSession Session)
     {
+        public bool IsFinished => Session.CanRemoveRecord && !CanRescan;
         public string Time => Session.CreatedAt.LocalDateTime.ToString("g", Culture);
         public int Quarantined => Session.Entries.Count(entry => entry.State == CleanupState.Quarantined && entry.CopyStatus == RecoveryCopyStatus.Available);
         public int Restored => Session.Entries.Count(entry => entry.State == CleanupState.Restored);
@@ -719,8 +777,9 @@ public partial class MainWindow : Window
             || entry.State == CleanupState.Quarantined && entry.CopyStatus != RecoveryCopyStatus.Available);
         public bool CanRestore => Session.Entries.Any(entry => entry.CanRestore);
         public bool CanDiscard => Session.Entries.Any(entry => entry.CanDiscard);
-        public bool CanRescan => Session.Entries.Any(entry => entry.State == CleanupState.OriginalInPlace ||
-            entry.State is CleanupState.Failed or CleanupState.Pending && entry.CopyStatus == RecoveryCopyStatus.Missing && entry.OriginalPathPresent);
+        public bool CanRescan => Session.Entries.Any(entry =>
+            entry.State is CleanupState.OriginalInPlace or CleanupState.Failed or CleanupState.Pending &&
+            entry.CopyStatus == RecoveryCopyStatus.Missing && entry.OriginalPathPresent);
     }
 
     private sealed record AttemptRow(UninstallAttempt Attempt)

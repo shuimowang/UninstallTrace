@@ -9,34 +9,29 @@ const string ProofName = "VerificationToken";
 const string ProofText = "fixture command argument with spaces";
 
 if (args is ["--fixture-uninstall", var childId, ProofText])
-    return RunFixtureUninstaller(childId);
+    return HostedStartupVerification.Allow("The integration fixture") ? RunFixtureUninstaller(childId) : 2;
 if (args is ["--verify-ui"])
 {
     ThemeVerification.Run();
     Checkpoint("Window themes, size-column layout, numeric ordering, and selectable details");
     return 0;
 }
+if (args is ["--verify-startup"])
+    return HostedStartupVerification.Run();
 if (args is ["--probe-path-attributes", var manifest])
     return PathAttributeProbe.Run(manifest);
 if (args.Length != 0 && args[0].StartsWith("--real-", StringComparison.Ordinal))
-    return RealAppVerification.Run(args);
+    return HostedStartupVerification.Allow("Real-application verification") ? RealAppVerification.Run(args) : 2;
 if (args.Length != 0 && args[0] == "--benchmark-scan")
-    return ScannerBenchmark.Run(args);
-if (args.Length != 0)
+    return HostedStartupVerification.Allow("The complete scanner benchmark") ? ScannerBenchmark.Run(args) : 2;
+var integration = args is ["--verify-integration"];
+if (args.Length != 0 && !integration)
     return 1;
+if (integration && !HostedStartupVerification.Allow("Integration verification"))
+    return 2;
 
 ThemeVerification.Run();
-Checkpoint("Dark theme on application windows");
-ScannerOwnershipVerification.Run();
-Checkpoint("Shared uninstallers and punctuation-sensitive app names");
-StartupValueVerification.Run();
-Checkpoint("Recheck the live startup command before quarantine");
-LockedQuarantineVerification.Run();
-Checkpoint("Locked quarantine targets and recovery-copy availability");
-ServiceResidueVerification.Run();
-Checkpoint("Read-only service attribution and shared host exclusions");
-RegistryRestoreVerification.Run();
-Checkpoint("Atomic registry restore and conflict handling");
+Checkpoint("Window themes, size-column layout, numeric ordering, and selectable details");
 
 (string Name, DateTime? Date)[] datedRows =
 [
@@ -49,6 +44,20 @@ Require(newest.Select(row => row.Name).SequenceEqual(["newer A", "newer B", "old
         oldest.Select(row => row.Name).SequenceEqual(["older", "newer A", "newer B", "missing A", "missing B"]),
     "Date sorting should keep unknown dates last and preserve the order of equal dates.");
 Checkpoint("Newest and oldest sorting with unknown install dates");
+
+if (!integration)
+    return 0;
+
+ScannerOwnershipVerification.Run();
+Checkpoint("Shared uninstallers and punctuation-sensitive app names");
+LockedQuarantineVerification.Run();
+Checkpoint("Locked quarantine targets and recovery-copy availability");
+ServiceResidueVerification.Run();
+Checkpoint("Read-only service attribution and shared host exclusions");
+RegistryRestoreVerification.Run();
+Checkpoint("Atomic registry restore and conflict handling");
+HistoryRemovalVerification.Run();
+Checkpoint("Remove only disposable recovery history records");
 
 var id = Guid.NewGuid().ToString("N");
 var name = FixturePrefix + id;
