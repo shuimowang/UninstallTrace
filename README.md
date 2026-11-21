@@ -25,6 +25,8 @@ The language setting supports English, Simplified Chinese, and automatic selecti
 
 Desktop install dates come from uninstall registrations. Some installers omit the date. Applying an MSI patch or performing a repair can update it. Store apps use the package installation or last update date reported by Windows. [Microsoft's MSI date documentation](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)
 
+Open **Settings → About and updates** to see your version, check the latest stable release on GitHub, or open the repository and release history. Update checks run when requested. Use the release page to download a new portable build.
+
 ## What it checks
 
 - Desktop uninstall registrations for the current user and machine, including 32-bit and 64-bit entries and verified MSI product codes.

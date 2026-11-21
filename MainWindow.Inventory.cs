@@ -34,6 +34,7 @@ public partial class MainWindow
     protected override void OnClosed(EventArgs e)
     {
         sizeRead?.Cancel();
+        updateCheck?.Cancel();
         base.OnClosed(e);
     }
 

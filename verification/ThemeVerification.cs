@@ -58,6 +58,7 @@ internal static class ThemeVerification
             VerifyContrast("Disabled button text", GetColor("DisabledTextBrush"), GetColor("DisabledSurfaceBrush"));
             InventoryLayoutVerification.Run(windows.OfType<MainWindow>().Single());
             InventoryEnrichmentVerification.Run();
+            UpdateUiVerification.Run();
             RecoveryListVerification.Run(windows.OfType<MainWindow>().Single());
             VerifyServiceReview();
         }

@@ -322,6 +322,24 @@
                         </Border>
                         <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,8,0,0">
                             <StackPanel>
+                                <TextBlock Text="{local:UiText '关于与更新', 'About and updates'}" FontSize="15" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="AppVersionText" Style="{StaticResource MutedText}" Margin="0,5,0,7"/>
+                                <WrapPanel>
+                                    <Button x:Name="CheckUpdatesButton" Content="{local:UiText '检查更新', 'Check for updates'}"
+                                            Click="OnCheckForUpdate" Margin="0,0,6,4"/>
+                                    <Button x:Name="OpenRepositoryButton" Content="{local:UiText 'GitHub 仓库', 'GitHub repository'}"
+                                            Click="OnOpenProjectPage" ToolTip="{Binding Tag, RelativeSource={RelativeSource Self}}" Margin="0,0,6,4"/>
+                                    <Button x:Name="OpenReleasesButton" Content="{local:UiText '发行记录', 'Release history'}"
+                                            Click="OnOpenProjectPage" ToolTip="{Binding Tag, RelativeSource={RelativeSource Self}}" Margin="0,0,0,4"/>
+                                </WrapPanel>
+                                <TextBlock x:Name="UpdateStatusText" Style="{StaticResource MutedText}" Margin="0,5,0,0" TextWrapping="Wrap"
+                                           Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+                                <Button x:Name="OpenUpdateButton" Content="{local:UiText '查看新版', 'View new release'}" Click="OnOpenProjectPage"
+                                        ToolTip="{Binding Tag, RelativeSource={RelativeSource Self}}" Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,7,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,8,0,0">
+                            <StackPanel>
                                 <TextBlock Text="{local:UiText '键盘快捷键', 'Keyboard shortcuts'}" FontSize="15" FontWeight="SemiBold"/>
                                 <TextBlock Text="{local:UiText 'Ctrl+F　搜索已安装程序', 'Ctrl+F   Search installed apps'}" Margin="0,7,0,0"/>
                                 <TextBlock Text="{local:UiText 'F5　刷新当前列表', 'F5   Refresh the current list'}" Margin="0,4,0,0"/>

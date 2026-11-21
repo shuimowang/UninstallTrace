@@ -25,6 +25,8 @@ UninstallTrace 先运行软件自带的卸载程序，再检查遗留文件和�
 
 桌面程序的日期来自卸载登记。部分安装程序省略此字段，MSI 的补丁或修复也可能更新它。商店应用使用 Windows 记录的包安装或上次更新日期。[Microsoft 关于 MSI 安装日期的说明](https://learn.microsoft.com/en-us/windows/win32/msi/uninstall-registry-key)
 
+在 **设置 → 关于与更新** 可以查看当前版本、向 GitHub 查询最新正式版，或打开项目仓库和发行记录。点击「检查更新」才会发起查询。新版便携程序可从发行页下载。
+
 ## 清理范围
 
 - 当前用户和本机的 Win32 卸载登记、32 位及 64 位程序，以及可核对产品编号的 MSI。

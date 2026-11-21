@@ -36,6 +36,9 @@ public partial class MainWindow : Window
         this.startInSettings = startInSettings;
         InitializeComponent();
         Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag);
+        AppVersionText.Text = Text($"当前版本 v{UpdateChecker.CurrentVersion}", $"Version v{UpdateChecker.CurrentVersion}");
+        OpenRepositoryButton.Tag = UpdateChecker.RepositoryPage;
+        OpenReleasesButton.Tag = UpdateChecker.ReleasesPage;
         DpiChanged += (_, _) => UpdateSizeColumnMinimum();
         switch (Preference)
         {

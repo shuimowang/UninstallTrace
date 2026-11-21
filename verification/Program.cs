@@ -13,7 +13,7 @@ if (args is ["--fixture-uninstall", var childId, ProofText])
 if (args is ["--verify-ui"])
 {
     ThemeVerification.Run();
-    Checkpoint("Window themes, size-column layout, numeric ordering, and selectable details");
+    Checkpoint("Window themes, inventory layout and ordering, and update settings");
     return 0;
 }
 if (args is ["--verify-startup"])
@@ -31,7 +31,9 @@ if (integration && !HostedStartupVerification.Allow("Integration verification"))
     return 2;
 
 ThemeVerification.Run();
-Checkpoint("Window themes, size-column layout, numeric ordering, and selectable details");
+Checkpoint("Window themes, inventory layout and ordering, and update settings");
+UpdateCheckerVerification.Run();
+Checkpoint("Stable release check, version ordering, and response and network failures");
 
 (string Name, DateTime? Date)[] datedRows =
 [
