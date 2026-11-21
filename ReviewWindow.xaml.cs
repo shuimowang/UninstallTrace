@@ -18,14 +18,14 @@ public partial class ReviewWindow : Window
     private CancellationTokenSource? serviceRead;
     public int? RelatedServices { get; private set; }
 
-    public ReviewWindow(InstalledApp app, string summary, LeftoverScanResult result, bool registrationConfirmedGone, bool readOnly)
+    public ReviewWindow(InstalledApp app, string summary, LeftoverScanResult result, bool registrationConfirmedGone, bool readOnly, string? displayName = null)
     {
         this.app = app;
         InitializeComponent();
         Language = XmlLanguage.GetLanguage(Culture.IetfLanguageTag);
         this.readOnly = readOnly;
         needsConsent = !registrationConfirmedGone && !readOnly;
-        ProductText.Text = app.Name;
+        ProductText.Text = displayName ?? app.Name;
         SummaryText.Text = summary;
         rows = result.Items.OrderBy(item => item.Confidence).ThenBy(item => item.Kind).ThenBy(item => item.Target, StringComparer.CurrentCultureIgnoreCase)
             .Select(item => new ReviewRow(item, registrationConfirmedGone && !readOnly && item.IsRecommended))

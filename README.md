@@ -11,7 +11,11 @@ UninstallTrace runs the original Windows uninstaller, checks what it left behind
 3. Choose **Run uninstaller** to start the original remover or **Scan for leftovers** to inspect a damaged or stale registration. Use **Scan removed app** for a program missing from the list.
 4. Check the location and evidence for the leftovers you want to quarantine. Open **Cleanup recovery** to restore the files and registry entries from a cleanup before discarding its backups. To use the removed program again, reinstall it with its installer or through the Store.
 
-Long names, publishers and versions wrap in the installed apps list. Drag the divider to resize the list and details. Click **Size** to see the largest reported sizes first. A dash means the size is unknown and sorts last in either direction. Select a program to see its reported byte count and copy the full version, path or uninstall command from the details pane.
+Long names, publishers and versions wrap in the installed apps list. Drag the divider to resize the list and details. Click **Size** to see the largest known sizes first. A dash means the size is unknown and sorts last in either direction. Select a program to see the size source and copy the full version, path or uninstall command from the details pane.
+
+When the installer leaves the size blank, UninstallTrace can measure disk allocation in a verified, exclusive install folder. A missing install location can be recovered when the registered application executable and its uninstaller are separate files in the same folder, the folder matches the full app name, and the ownership checks pass. The measurement counts hard links once and excludes linked subfolders. Estimates with skipped files or folders are marked as partial. Space freed by an uninstall depends on which files the uninstaller removes and whether those files retain other links.
+
+Separate uninstall registrations with the same display name remain separate rows. When there is supporting evidence, their labels identify a PC game, launcher or Android app managed by an emulator. The details show the registration source and the corresponding uninstall command.
 
 **Cleanup recovery** opens with recoverable and unresolved records. Select **Show finished records** to include older records. Select a row and choose **Delete record** to remove its journal after the app confirms its quarantine is empty. Records with copies remain available for restore or permanent disposal.
 

@@ -4,6 +4,14 @@
     Style="{StaticResource DarkWindowStyle}"
     Width="755" Height="545" MinWidth="600" MinHeight="410"
     WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Window.Resources>
+        <Style x:Key="BatchNameText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="TextTrimming" Value="None"/>
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="ToolTip" Value="{Binding IdentityHint}"/>
+        </Style>
+    </Window.Resources>
     <Grid Margin="18,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -15,17 +23,18 @@
         <TextBox x:Name="Search" Grid.Row="1" Margin="0,0,0,8" TextChanged="OnSearch"/>
         <Border Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
             <Grid>
-                <DataGrid x:Name="Choices" IsReadOnly="True" Sorting="OnSort" Margin="1,1,1,5">
+                <DataGrid x:Name="Choices" IsReadOnly="True" RowHeight="NaN" MinRowHeight="36"
+                          VirtualizingPanel.ScrollUnit="Pixel" Sorting="OnSort" Margin="1,1,1,5">
                     <DataGrid.Columns>
                         <DataGridTemplateColumn Width="45" CanUserSort="False">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              AutomationProperties.Name="{Binding App.Name}"/>
+                                              AutomationProperties.Name="{Binding DisplayName}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn x:Name="AppColumn" Binding="{Binding App.Name}" CanUserSort="False" Width="2*" ElementStyle="{StaticResource CellText}"/>
+                        <DataGridTextColumn x:Name="AppColumn" Binding="{Binding DisplayName}" CanUserSort="False" Width="2*" ElementStyle="{StaticResource BatchNameText}"/>
                         <DataGridTextColumn x:Name="DateColumn" Binding="{Binding DateLabel}" Width="106" ElementStyle="{StaticResource CellText}"/>
                         <DataGridTextColumn x:Name="PublisherColumn" Binding="{Binding App.Publisher}" CanUserSort="False" Width="*" ElementStyle="{StaticResource CellText}"/>
                         <DataGridTextColumn x:Name="VersionColumn" Binding="{Binding App.Version}" CanUserSort="False" Width="83" ElementStyle="{StaticResource CellText}"/>

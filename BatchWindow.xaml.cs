@@ -8,12 +8,16 @@ namespace DeepUninstaller;
 
 public partial class BatchWindow : Window
 {
+    private readonly IReadOnlyDictionary<string, RegistrationLabel> labels;
     private BatchRow[] rows;
     private ListSortDirection dateDirection = ListSortDirection.Descending;
 
-    public BatchWindow(IReadOnlyList<InstalledApp> apps)
+    public BatchWindow(IReadOnlyList<InstalledApp> apps) : this(apps, RegistrationLabels.Create(apps)) { }
+
+    internal BatchWindow(IReadOnlyList<InstalledApp> apps, IReadOnlyDictionary<string, RegistrationLabel> labels)
     {
-        rows = apps.Select(app => new BatchRow(app)).ToArray();
+        this.labels = labels;
+        rows = apps.Select(app => new BatchRow(app, RegistrationLabels.NameFor(app, labels), labels.GetValueOrDefault(app.Id)?.Evidence)).ToArray();
         InitializeComponent();
         Title = Localization.Text("批量卸载", "Batch uninstall");
         HelpText.Text = Localization.Text(
@@ -64,7 +68,7 @@ public partial class BatchWindow : Window
     private void Filter()
     {
         var text = Search.Text.Trim();
-        var result = rows.Where(row => row.App.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase) ||
+        var result = rows.Where(row => row.DisplayName.Contains(text, StringComparison.CurrentCultureIgnoreCase) ||
                                        row.App.Publisher.Contains(text, StringComparison.CurrentCultureIgnoreCase)).ToArray();
         Choices.ItemsSource = result;
         DateColumn.SortDirection = dateDirection;
@@ -83,20 +87,24 @@ public partial class BatchWindow : Window
         var selected = SelectedApps;
         if (selected.Count == 0)
             return;
-        var names = string.Join("\n", selected.Take(8).Select(app => $"• {app.Name}"));
-        if (selected.Count > 8)
-            names += $"\n{Localization.Text($"另有 {selected.Count - 8} 个程序", $"Plus {selected.Count - 8} more programs")}";
-        var consent = UiPrompt.Show(this,
-            Localization.Text($"为以下程序启动原厂卸载队列？\n\n{names}", $"Start the vendor uninstall queue for these programs?\n\n{names}"),
+        var consent = UiPrompt.Show(this, ConfirmationMessage(selected, labels),
             Title, MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
         if (consent == MessageBoxResult.OK)
             DialogResult = true;
     }
 
-    private sealed class BatchRow(InstalledApp app) : INotifyPropertyChanged
+    internal static string ConfirmationMessage(IReadOnlyList<InstalledApp> selected, IReadOnlyDictionary<string, RegistrationLabel> labels)
+    {
+        var targets = string.Join("\n\n", selected.Select(app => $"• {RegistrationLabels.ConfirmationTarget(app, labels, includeCommand: true)}"));
+        return Localization.Text($"按以下顺序运行原厂卸载命令？\n\n{targets}", $"Run the vendor uninstall commands in this order?\n\n{targets}");
+    }
+
+    private sealed class BatchRow(InstalledApp app, string displayName, string? evidence) : INotifyPropertyChanged
     {
         private bool selected;
         public InstalledApp App { get; } = app;
+        public string DisplayName { get; } = displayName;
+        public string IdentityHint { get; } = string.IsNullOrWhiteSpace(evidence) ? displayName : evidence;
         public string DateLabel => App.InstalledOn?.ToString("d", Localization.Culture) ?? Localization.Text("未登记", "Unknown");
         public event PropertyChangedEventHandler? PropertyChanged;
 

@@ -50,6 +50,10 @@ if (!integration)
 
 ScannerOwnershipVerification.Run();
 Checkpoint("Shared uninstallers and punctuation-sensitive app names");
+AppRoleVerification.Run();
+Checkpoint("Evidence-based role labels for same-name registrations");
+InstallSizeVerification.Run();
+Checkpoint("Install-directory allocation, shared-folder protection, and hardlink and sparse-file accounting");
 LockedQuarantineVerification.Run();
 Checkpoint("Locked quarantine targets and recovery-copy availability");
 ServiceResidueVerification.Run();

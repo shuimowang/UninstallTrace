@@ -14,6 +14,9 @@
             <Setter Property="TextTrimming" Value="None"/>
             <Setter Property="TextAlignment" Value="Right"/>
         </Style>
+        <Style x:Key="InventorySizeText" TargetType="TextBlock" BasedOn="{StaticResource InventoryNumberText}">
+            <Setter Property="ToolTip" Value="{Binding SizeHint}"/>
+        </Style>
         <Style x:Key="WrappedListCellText" TargetType="TextBlock" BasedOn="{StaticResource CellText}">
             <Setter Property="TextTrimming" Value="None"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
@@ -152,10 +155,10 @@
                                     </DataGridTextColumn>
                                     <DataGridTextColumn x:Name="InventorySizeColumn" Header="{local:UiText '大小', 'Size'}"
                                                         Binding="{Binding Size}" Width="Auto" SortMemberPath="Size"
-                                                        CellStyle="{StaticResource SizeCell}" ElementStyle="{StaticResource InventoryNumberText}">
+                                                        CellStyle="{StaticResource SizeCell}" ElementStyle="{StaticResource InventorySizeText}">
                                         <DataGridTextColumn.HeaderStyle>
                                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource DarkGridHeader}">
-                                                <Setter Property="ToolTip" Value="{local:UiText '安装程序登记的估算大小。破折号表示未登记。', 'Estimated size reported by the installer. A dash means no size was reported.'}"/>
+                                                <Setter Property="ToolTip" Value="{local:UiText '优先使用登记大小，缺失时核算独立安装目录。≥ 表示仅统计到一部分，— 表示大小未知。', 'Installer estimate or measured installation folder. ≥ indicates a partial measurement. A dash means unknown.'}"/>
                                             </Style>
                                         </DataGridTextColumn.HeaderStyle>
                                     </DataGridTextColumn>
@@ -199,13 +202,14 @@
                                     <StackPanel x:Name="AppDetails" Visibility="Collapsed">
                                         <TextBox x:Name="AppPublisher" Style="{StaticResource DetailValue}" Foreground="{StaticResource MutedBrush}"
                                                  AutomationProperties.Name="{local:UiText '发布者', 'Publisher'}" Margin="0,2,0,0"/>
+                                        <TextBlock x:Name="AppRoleEvidence" Style="{StaticResource MutedText}" TextWrapping="Wrap" FontSize="12" Margin="0,5,0,0" Visibility="Collapsed"/>
                                         <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Margin="0,9,0,9"/>
                                         <TextBlock Text="{local:UiText '版本', 'Version'}" Style="{StaticResource MutedText}" FontSize="12"/>
                                         <TextBox x:Name="AppVersion" Style="{StaticResource DetailValue}" Margin="0,1,0,6"
                                                  AutomationProperties.Name="{local:UiText '完整版本号', 'Full version'}"/>
-                                        <TextBlock Text="{local:UiText '估算大小', 'Estimated size'}" Style="{StaticResource MutedText}" FontSize="12"/>
+                                        <TextBlock x:Name="AppSizeLabel" Style="{StaticResource MutedText}" FontSize="12"/>
                                         <TextBox x:Name="AppSize" Style="{StaticResource DetailValue}" Margin="0,1,0,6"
-                                                 AutomationProperties.Name="{local:UiText '估算大小', 'Estimated size'}"/>
+                                                 AutomationProperties.LabeledBy="{Binding ElementName=AppSizeLabel}"/>
                                         <TextBlock Text="{local:UiText '安装信息', 'Installation details'}" Style="{StaticResource MutedText}" FontSize="12"/>
                                         <TextBlock x:Name="AppScope" TextWrapping="Wrap" Margin="0,2,0,8"/>
                                         <TextBlock Text="{local:UiText '安装位置', 'Install location'}" Style="{StaticResource MutedText}" FontSize="12"/>
@@ -332,6 +336,7 @@
                 <Button x:Name="StopWaitButton" Content="{local:UiText '停止等待', 'Stop waiting'}" DockPanel.Dock="Right" Click="OnStopWait"
                         Visibility="Collapsed" MinHeight="25" Padding="7,2" FontSize="12" Margin="8,0,0,0"/>
                 <ProgressBar x:Name="BusyProgress" DockPanel.Dock="Right" IsIndeterminate="True" Width="95" Height="4" Visibility="Collapsed" Foreground="{StaticResource AccentBrush}"/>
+                <TextBlock x:Name="SizeProgressText" DockPanel.Dock="Right" Style="{StaticResource MutedText}" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
                 <TextBlock x:Name="StatusText" Text="{local:UiText '正在读取已安装程序…', 'Loading installed apps…'}" Style="{StaticResource MutedText}" FontSize="12" VerticalAlignment="Center"
                            TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
             </DockPanel>

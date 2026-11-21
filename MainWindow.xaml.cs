@@ -160,6 +160,7 @@ public partial class MainWindow : Window
         if (view != currentView)
             SetStatus(view == MainView.Apps ? InventoryStatus() : "");
         currentView = view;
+        SizeProgressText.Visibility = view == MainView.Apps ? Visibility.Visible : Visibility.Collapsed;
         AppsView.Visibility = view == MainView.Apps ? Visibility.Visible : Visibility.Collapsed;
         AttemptsView.Visibility = view == MainView.Attempts ? Visibility.Visible : Visibility.Collapsed;
         HistoryView.Visibility = view == MainView.Recovery ? Visibility.Visible : Visibility.Collapsed;
@@ -176,7 +177,7 @@ public partial class MainWindow : Window
     private async Task RefreshApps()
     {
         SetStatus(Text("正在读取已安装程序…", "Loading installed apps…"));
-        SetInventory(await Task.Run(InstalledApps.Read));
+        await ReloadInventoryAsync();
         SetStatus(InventoryStatus());
     }
 
@@ -227,20 +228,13 @@ public partial class MainWindow : Window
         ApplyFilter();
     }
 
-    internal void SetInventory(IReadOnlyList<InstalledApp> inventory)
-    {
-        apps = inventory;
-        UpdateSizeColumnMinimum();
-        ApplyFilter();
-    }
-
     private void UpdateSizeColumnMinimum()
     {
         // WPF Auto measures realized rows. Include off-screen values so scrolling and filtering keep the unit visible.
         var typeface = new Typeface(AppGrid.FontFamily, AppGrid.FontStyle, AppGrid.FontWeight, AppGrid.FontStretch);
         var dpi = VisualTreeHelper.GetDpi(AppGrid).PixelsPerDip;
         var mode = TextOptions.GetTextFormattingMode(AppGrid);
-        var largest = apps.Select(app => FormatSize(app.EstimatedSizeBytes)).Distinct().DefaultIfEmpty("—")
+        var largest = inventoryRows.Values.Select(row => row.Size).Distinct().DefaultIfEmpty("—")
             .Max(value => new FormattedText(value, Culture, AppGrid.FlowDirection, typeface, AppGrid.FontSize,
                 Brushes.White, null, mode, dpi).WidthIncludingTrailingWhitespace);
         var padding = (Thickness)FindResource("SizeCellPadding");
@@ -253,8 +247,8 @@ public partial class MainWindow : Window
         restoredSelection = null;
         var query = SearchInput.Text.Trim();
         var matching = apps.Where(app => (IncludeProtected.IsChecked == true || !app.IsProtected) &&
-            (query.Length == 0 || Contains(app.Name, query) || Contains(app.Publisher, query) || Contains(app.Version, query)));
-        var visible = OrderApps(matching).Select(app => new AppRow(app)).ToArray();
+            (query.Length == 0 || Contains(inventoryRows[app.Id].Name, query) || Contains(app.Publisher, query) || Contains(app.Version, query)));
+        var visible = OrderApps(matching).Select(app => inventoryRows[app.Id]).ToArray();
         AppGrid.ItemsSource = visible;
         AppGrid.SelectedItem = visible.FirstOrDefault(row => row.App.Id == selected) ?? visible.FirstOrDefault();
         UpdateAppSortIndicators();
@@ -272,9 +266,8 @@ public partial class MainWindow : Window
             AppSortColumn.InstalledOn => SortOrder.KnownFirst(matching, app => app.InstalledOn, appSortDirection),
             AppSortColumn.Publisher => By(app => app.Publisher, comparer),
             AppSortColumn.Version => By(app => app.Version, comparer),
-            AppSortColumn.Size => SortOrder.KnownFirst(matching,
-                app => app.EstimatedSizeBytes is > 0 ? app.EstimatedSizeBytes : null, appSortDirection),
-            _ => By(app => app.Name, comparer),
+            AppSortColumn.Size => BySize(),
+            _ => By(app => inventoryRows[app.Id].Name, comparer),
         };
 
         return ordered.ThenBy(app => app.Name, comparer).ThenBy(app => app.Publisher, comparer)
@@ -284,6 +277,14 @@ public partial class MainWindow : Window
             appSortDirection == ListSortDirection.Ascending
                 ? matching.OrderBy(selector, keyComparer)
                 : matching.OrderByDescending(selector, keyComparer);
+
+        IOrderedEnumerable<InstalledApp> BySize()
+        {
+            var ranked = matching.OrderBy(app => inventoryRows[app.Id].SizeRank);
+            return appSortDirection == ListSortDirection.Ascending
+                ? ranked.ThenBy(app => inventoryRows[app.Id].ByteCount)
+                : ranked.ThenByDescending(app => inventoryRows[app.Id].ByteCount);
+        }
     }
 
     private void UpdateAppSortIndicators()
@@ -323,7 +324,7 @@ public partial class MainWindow : Window
             return;
         var row = AppGrid.SelectedItem as AppRow;
         var app = row?.App;
-        AppName.Text = app?.Name ?? Text("选择一个程序", "Select an app");
+        AppName.Text = row?.Name ?? Text("选择一个程序", "Select an app");
         AppDetails.Visibility = app is null ? Visibility.Collapsed : Visibility.Visible;
         ScanButton.IsEnabled = !busy && app is { IsProtected: false };
         UninstallButton.IsEnabled = false;
@@ -333,9 +334,11 @@ public partial class MainWindow : Window
         var unknown = Text("未登记", "Not reported");
         AppPublisher.Text = app.Publisher.Length > 0 ? app.Publisher : unknown;
         AppVersion.Text = app.Version.Length > 0 ? app.Version : unknown;
-        AppSize.Text = app.EstimatedSizeBytes is long bytes && bytes > 0
-            ? row.Size + Environment.NewLine + Text($"{bytes.ToString("N0", Culture)} 字节", $"{bytes.ToString("N0", Culture)} bytes")
-            : unknown;
+        AppRoleEvidence.Text = row.Label.Evidence;
+        AppRoleEvidence.Visibility = row.Label.IsDuplicate ? Visibility.Visible : Visibility.Collapsed;
+        AppRoleEvidence.ToolTip = app.Id;
+        AppSizeLabel.Text = row.SizeLabel;
+        AppSize.Text = row.SizeDetail;
         var type = app.IsMsi ? "Windows Installer" : Text("桌面程序", "Desktop app");
         var protection = app.IsProtected ? Text("  ·  受保护", "  ·  Protected") : "";
         AppScope.Text = $"{app.Scope}  ·  {type}{protection}" +
@@ -357,7 +360,8 @@ public partial class MainWindow : Window
         if (AppGrid.SelectedItem is not AppRow row)
             return;
         var app = row.App;
-        if (UiPrompt.Show(this, Text($"运行「{app.Name}」的原厂卸载程序？原厂卸载本身的改动由该程序处理。", $"Run the original uninstaller for {app.Name}? Its changes are managed by the original uninstaller."),
+        var target = RegistrationLabels.ConfirmationTarget(app, registrationLabels);
+        if (UiPrompt.Show(this, Text($"运行以下项目的原厂卸载程序？\n\n{target}", $"Run the original uninstaller for this entry?\n\n{target}"),
                 Text("确认卸载", "Confirm uninstall"), MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel) != MessageBoxResult.OK)
             return;
 
@@ -374,7 +378,8 @@ public partial class MainWindow : Window
             throw new InvalidOperationException(error);
 
         var attempt = await Task.Run(() => UninstallHistory.Start(current));
-        SetStatus(Text($"正在等待「{app.Name}」的原厂卸载程序退出…", $"Waiting for the original uninstaller for {app.Name} to exit…"));
+        var displayName = RegistrationLabels.NameFor(app, registrationLabels);
+        SetStatus(Text($"正在等待「{displayName}」的原厂卸载程序退出…", $"Waiting for the original uninstaller for {displayName} to exit…"));
         int exitCode;
         using var wait = new CancellationTokenSource();
         try
@@ -460,12 +465,13 @@ public partial class MainWindow : Window
 
     private async Task ScanAndReview(InstalledApp app, string summary, bool registrationConfirmedGone = false, bool readOnly = false)
     {
-        SetStatus(Text($"正在扫描「{app.Name}」的残留…", $"Scanning for leftovers from {app.Name}…"));
+        var displayName = RegistrationLabels.NameFor(app, registrationLabels);
+        SetStatus(Text($"正在扫描「{displayName}」的残留…", $"Scanning for leftovers from {displayName}…"));
         var result = await Task.Run(() => LeftoverScanner.Scan(app, InstalledApps.Read()));
-        var review = new ReviewWindow(app, summary, result, registrationConfirmedGone, readOnly) { Owner = this };
+        var review = new ReviewWindow(app, summary, result, registrationConfirmedGone, readOnly, displayName) { Owner = this };
         if (review.ShowDialog() == true)
         {
-            SetStatus(Text($"正在隔离「{app.Name}」的选中残留…", $"Quarantining the selected leftovers from {app.Name}…"));
+            SetStatus(Text($"正在隔离「{displayName}」的选中残留…", $"Quarantining the selected leftovers from {displayName}…"));
             var session = await Task.Run(() => recovery.Clean(app, review.SelectedItems, registrationConfirmedGone));
             SetView(MainView.Recovery);
             await RefreshHistory(session.Id);
@@ -474,10 +480,10 @@ public partial class MainWindow : Window
             SetStatus(Text($"已隔离 {totals.Quarantined} 项，待核对 {totals.Failed} 项。",
                     $"Quarantined {totals.Quarantined} items. {totals.Failed} need review.")
                 + (inPlace == 0 ? "" : Text($"有 {inPlace} 项仍在原位置。", $" {inPlace} remain at their original paths.")));
-            SetInventory(await Task.Run(InstalledApps.Read));
+            await ReloadInventoryAsync();
             return;
         }
-        SetInventory(await Task.Run(InstalledApps.Read));
+        await ReloadInventoryAsync();
         var services = review.RelatedServices is > 0
             ? Text($"另发现 {review.RelatedServices} 条关联服务登记。", $" Found {review.RelatedServices} related service registrations.") : "";
         SetStatus((result.Items.Count == 0 ? Text("未发现可归属的文件或注册表项。", "No attributable files or registry items were found.")
@@ -755,15 +761,6 @@ public partial class MainWindow : Window
             unit++;
         }
         return $"{value.ToString(unit < 2 ? "0.#" : "0.##", Culture)} {SizeUnits[unit]}";
-    }
-
-    private sealed record AppRow(InstalledApp App)
-    {
-        public string Name => App.Name;
-        public string Publisher => App.Publisher.Length == 0 ? "—" : App.Publisher;
-        public string Version => App.Version.Length == 0 ? "—" : App.Version;
-        public string InstallDate => App.InstalledOn?.ToString("d", Culture) ?? Text("未登记", "Unknown");
-        public string Size => FormatSize(App.EstimatedSizeBytes);
     }
 
     private sealed record SessionRow(CleanupSession Session)

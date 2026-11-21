@@ -17,7 +17,7 @@ public partial class MainWindow
     private async void OnBatchUninstall(object sender, RoutedEventArgs e)
     {
         var candidates = apps.Where(app => !app.IsProtected && UninstallCommand.TryCreate(app, out _, out _)).ToArray();
-        var picker = new BatchWindow(candidates) { Owner = this };
+        var picker = new BatchWindow(candidates, registrationLabels) { Owner = this };
         if (picker.ShowDialog() != true)
             return;
 
