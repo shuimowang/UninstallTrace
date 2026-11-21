@@ -47,6 +47,8 @@ internal static class InventoryLayoutVerification
         var expanded = new Size(window.Width * 1.25 - frameWidth, height);
         var largestApp = apps.Values.Single(row => row.App.EstimatedSizeBytes == long.MaxValue).App;
 
+        VerifyTopNavigation(window, minimum);
+
         foreach (var (label, bounds) in new[] { ("minimum", minimum), ("default", normal), ("expanded", expanded) })
         {
             Layout(content, bounds);
@@ -83,7 +85,7 @@ internal static class InventoryLayoutVerification
         VerifySort(ListSortDirection.Descending);
         VerifySort(ListSortDirection.Ascending);
         VerifySortLabels(window, minimum);
-        VerifyTranslatedSortLabels(minimum, command);
+        VerifyTranslatedLayout(minimum, command);
         VerifyVirtualization(window, minimum, command);
 
         void VerifySort(ListSortDirection direction)
@@ -208,7 +210,7 @@ internal static class InventoryLayoutVerification
             $"The selected sort label '{label}' is clipped.");
     }
 
-    private static void VerifyTranslatedSortLabels(Size bounds, string command)
+    private static void VerifyTranslatedLayout(Size bounds, string command)
     {
         var alternate = DeepUninstaller.Localization.Current == AppLanguage.English
             ? AppLanguage.SimplifiedChinese : AppLanguage.English;
@@ -223,12 +225,69 @@ internal static class InventoryLayoutVerification
             try
             {
                 window.SetInventory([Fixture("Translation layout fixture", 1024, command)]);
+                VerifyTopNavigation(window, bounds);
                 VerifySortLabels(window, bounds);
             }
             finally { window.Close(); }
         }
         finally { setPreference.Invoke(null, [original]); }
     }
+
+    private static void VerifyTopNavigation(MainWindow window, Size bounds)
+    {
+        var content = (FrameworkElement)window.Content;
+        var account = Named<TextBlock>(window, "AccountText");
+        var originalAccountText = account.Text;
+        try
+        {
+            account.Text = DeepUninstaller.Localization.Text("管理员权限", "Administrator");
+            Layout(content, bounds);
+            var tolerance = 1 / VisualTreeHelper.GetDpi(content).PixelsPerDip;
+            Require(!VisualDescendants(content).OfType<TextBlock>()
+                    .Any(text => text.Text == window.Title && text.ActualWidth > 0 && text.ActualHeight > 0),
+                "The client area repeats the app title from the title bar.");
+
+            var tabs = new[] { "AppsNav", "AttemptsNav", "HistoryNav", "SettingsNav" }
+                .Select(name => Named<Button>(window, name)).ToArray();
+            var tabBounds = tabs.Select(tab => BoundsIn(tab, content)).ToArray();
+            var navigationMiddle = tabBounds[0].Top + tabBounds[0].Height / 2;
+            for (var index = 0; index < tabs.Length; index++)
+            {
+                var tab = tabs[index];
+                var position = tabBounds[index];
+                Require(position.Width > 0 && position.Height > 0 && position.Left >= -tolerance
+                    && position.Right <= content.ActualWidth + tolerance
+                    && Math.Abs(position.Top + position.Height / 2 - navigationMiddle) <= tolerance
+                    && (index == 0 || tabBounds[index - 1].Right <= position.Left + tolerance),
+                    "All four navigation buttons must fit in one horizontal row at minimum width.");
+
+                var peer = new ButtonAutomationPeer(tab);
+                Require(tab.IsEnabled && tab.Focusable && tab.IsTabStop && peer.GetName().Length > 0
+                    && peer.GetPattern(PatternInterface.Invoke) is IInvokeProvider,
+                    $"Navigation button '{tab.Name}' must remain accessible by keyboard and automation.");
+                var label = VisualDescendants(tab).OfType<TextBlock>().FirstOrDefault(text => text.Text.Any(char.IsLetterOrDigit));
+                Require(label is not null && MeasureText(label).WidthIncludingTrailingWhitespace <= label.ActualWidth + tolerance,
+                    $"Navigation label '{tab.Name}' is clipped or missing.");
+            }
+
+            var listing = BoundsIn(Named<DataGrid>(window, "AppGrid"), content);
+            var body = BoundsIn(Named<Grid>(window, "AppsView"), content);
+            var accountBounds = BoundsIn(account, content);
+            var lastTab = tabBounds[^1];
+            Require(accountBounds.Left >= lastTab.Right - tolerance && accountBounds.Top < lastTab.Bottom
+                && accountBounds.Bottom > lastTab.Top && accountBounds.Right <= content.ActualWidth + tolerance
+                && content.ActualWidth - accountBounds.Right <= lastTab.Height
+                && MeasureText(account).WidthIncludingTrailingWhitespace <= account.ActualWidth + tolerance,
+                "The account label must fit at the far right of the top navigation row.");
+            Require(body.Width >= content.ActualWidth * 0.9 && listing.Width > content.ActualWidth / 2
+                && listing.Top >= tabBounds.Max(tab => tab.Bottom) - tolerance,
+                "The inventory should use the reclaimed shell width and start below the navigation row.");
+        }
+        finally { account.Text = originalAccountText; }
+    }
+
+    private static Rect BoundsIn(FrameworkElement element, FrameworkElement ancestor) =>
+        element.TransformToAncestor(ancestor).TransformBounds(new Rect(element.RenderSize));
 
     private static void VerifyVirtualization(MainWindow window, Size bounds, string command)
     {
